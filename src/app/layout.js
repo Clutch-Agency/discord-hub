@@ -1,8 +1,11 @@
 import "./globals.css"
 
 export const metadata = {
-  title: "Discord Hub",
+  title: "Clutch | Discord Hub",
   description: "Gerencie templates de servidores Discord",
+  icons: {
+    icon: "/logo/logo-pink.png",
+  },
 }
 
 export default function RootLayout({ children }) {

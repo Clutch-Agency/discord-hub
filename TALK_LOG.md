@@ -1,6 +1,85 @@
 
 
 ## Entrada de Log
+- Data/hora: 2026-07-26 07:15
+- Resumo do que foi feito: Iniciada implementação de listagem e remoção de servidores onde o bot está instalado. Decisão de arquitetura confirmada com o usuário: painel web e bot rodam na mesma máquina (Hostinger), então optou-se por expor uma API HTTP interna simples no próprio processo do bot (usando express), rodando em localhost com autenticação via header secreto (x-bot-secret), ao invés de criar tabela intermediária no banco. Instalada dependência express, criado arquivo de rotas dedicado (bot/api.js) com endpoint GET /guilds (lista servidores) e DELETE /guilds/:id (remove o bot de um servidor específico via guild.leave()), e conectada a subida dessa API ao evento clientReady do bot.
+- Arquivos criados/alterados: package.json (dependência express adicionada), .env (novas variáveis BOT_API_SECRET e BOT_API_PORT), bot/api.js (novo arquivo, contém toda a lógica da API HTTP interna do bot), bot/index.js (import de startBotApi, chamada de startBotApi(client) dentro do listener clientReady)
+- Decisões tomadas: API HTTP interna ao invés de tabela de sincronização no banco, por rodarem painel e bot na mesma máquina. Autenticação simples via header customizado com chave secreta compartilhada, guardada apenas em .env (nunca versionada). Rota de remoção implementada com guild.leave(), que remove o bot do servidor sem excluir nada do servidor em si, apenas revoga a presença do bot.
+- Erros encontrados: nenhum ainda, aguardando teste do usuário
+- Como foi corrigido: N/A
+- Estado atual do build: API interna do bot implementada e pendente de teste (subida do servidor Express e resposta do endpoint /guilds via curl)
+- Próximo passo único: usuário deve confirmar log do terminal mostrando a API subindo na porta configurada, e o retorno correto do comando curl com a lista de servidores em JSON. Após confirmação, criar a tela no painel web (nova rota /dashboard/servers ou seção dentro do dashboard existente) que chama essa API via fetch no lado do servidor (server component ou server action), exibindo nome, ícone e contagem de membros de cada servidor, com botão de remover chamando a rota DELETE. Depois disso, seguir para checkpoint Git e publicação no GitHub, conforme solicitado anteriormente pelo usuário.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 07:02
+- Resumo do que foi feito: Aplicada identidade visual Clutch no layout raiz (título da aba e favicon) e no dashboard (lista de templates). Cabeçalho passou a usar o logo branco no lugar de texto, cores trocadas de slate/indigo genérico para a paleta Clutch (fundo clutch-gray, cards em tom mais claro #1f1f23, bordas brancas translúcidas, acentos em rosa nos botões, links e hover dos cards).
+- Arquivos criados/alterados: src/app/layout.js (metadata.title alterado para "Clutch | Discord Hub", adicionado metadata.icons apontando para logo-pink.png), src/app/dashboard/page.js (reescrita completa do visual: header com logo, inputs e botões com cores clutch-pink, cards de template com borda hover em rosa)
+- Decisões tomadas: Uso de dois tons de fundo escuro (clutch-gray como fundo geral, #1f1f23 como fundo de cards e header) para criar profundidade visual sem se afastar muito da paleta base. Adicionado efeito de hover com borda rosa translúcida nos cards de template para dar feedback visual interativo, recurso que não existia na versão anterior.
+- Erros encontrados: nenhum
+- Como foi corrigido: N/A
+- Estado atual do build: layout.js, page.js (login) e dashboard/page.js com identidade visual Clutch aplicada, pendente confirmação visual do usuário do dashboard e do favicon/título da aba
+- Próximo passo único: confirmar visualmente o dashboard, depois seguir para o editor de template (src/app/dashboard/templates/[id]/page.js e ChannelList.js), último arquivo da fase de modernização visual
+
+## Entrada de Log
+- Data/hora: 2026-07-26 06:52
+- Resumo do que foi feito: Confirmado funcionamento do globals.css com paleta Clutch registrada via Tailwind v4. Reescrita a tela de login (página inicial) aplicando fundo escuro com dois brilhos coloridos (glow rosa e azul), cartão central com logo branco da Clutch, título, e botão de login em rosa vibrante substituindo o roxo indigo genérico anterior.
+- Arquivos criados/alterados: src/app/page.js (reescrita completa: remoção do gradiente slate/indigo genérico, adição de fundo bg-clutch-gray com dois elementos de glow posicionados absolutamente, adição de img com logo-white.png, botão trocado de bg-indigo-600 para bg-clutch-pink com hover bg-clutch-pink-dark)
+- Decisões tomadas: Uso de tag img simples ao invés de next/image para os logos, mantendo consistência com o restante do código que já usa img para avatar do usuário. Glow decorativo implementado com divs posicionadas absolutamente com blur-3xl e opacidade baixa, técnica leve sem dependências extras.
+- Erros encontrados: nenhum
+- Como foi corrigido: N/A
+- Estado atual do build: globals.css e tela de login (page.js raiz) com identidade visual Clutch aplicada, pendente confirmação visual do usuário
+- Próximo passo único: confirmar visualmente a tela de login carregada corretamente com o logo aparecendo, depois seguir para o dashboard (src/app/dashboard/page.js) aplicando o mesmo padrão visual
+
+## Entrada de Log
+- Data/hora: 2026-07-26 06:38
+- Resumo do que foi feito: Corrigido erro de validação do Discord ao abrir o modal de criação de novo cargo. O texto dinâmico do label (que incluía o nome do canal ou categoria como fallback) ultrapassava o limite de 45 caracteres imposto pela API do Discord para o campo setLabel de um TextInputBuilder, causando ExpectedConstraintError e impedindo a abertura do modal sempre que o nome do canal/categoria fosse longo.
+- Arquivos criados/alterados: bot/index.js (bloco de criação do modal-role dentro do handler pick-roles-: label trocado de texto dinâmico para texto fixo "Nome do cargo (opcional)", texto dinâmico com o nome de fallback movido para setPlaceholder, que aceita até 100 caracteres, com slice(0, 100) de segurança adicional)
+- Decisões tomadas: Separar responsabilidade entre label (sempre texto curto e fixo, dentro do limite de 45 caracteres do Discord) e placeholder (usado para qualquer texto dinâmico maior, como nomes de canais/categorias que podem ser longos), evitando que o comprimento de dados vindos do banco quebre a interface do bot
+- Erros encontrados: ExpectedConstraintError (s.string().lengthLessThanOrEqual, limite 45 caracteres) ao montar o label do campo de texto do modal de novo cargo com um nome de canal longo ("canal-privadinho-do-bebe"), impedindo a abertura do modal e travando o fluxo de aplicação de template
+- Como foi corrigido: movido o texto dinâmico do label para o placeholder do TextInputBuilder, e adicionado slice(0, 100) como proteção contra nomes ainda mais longos no futuro
+- Estado atual do build: fluxo completo de categorias com correção de limite de caracteres aplicada, pendente confirmação do usuário de que o modal abre corretamente mesmo com nomes de canal longos
+
+## Entrada de Log
+- Data/hora: 2026-07-26 06:30
+- Resumo do que foi feito: Corrigido segundo bug de encadeamento de interações, dessa vez na direção oposta ao anterior. Fluxo completo de categorias e canais privados confirmado funcionando de ponta a ponta (criação de categoria nova privada, criação de novo cargo, criação de canais públicos, pergunta de cargo por canal privado, aplicação correta de permissões), restando apenas a mensagem final de resumo quebrando com erro.
+- Arquivos criados/alterados: bot/index.js (função processNextPrivateChannel: troca de chamada direta interaction.followUp() por respond(interaction, ...) no bloco de finalização do loop de canais privados)
+- Decisões tomadas: Reforçada a decisão anterior de centralizar toda resposta a interações através da função respond(), incluindo o bloco de mensagem final que havia ficado de fora da refatoração anterior por descuido
+- Erros encontrados: DiscordjsError [InteractionNotReplied] ao tentar enviar a mensagem de resumo final após processar o último canal privado, porque a interação do botão "Confirmar seleção" daquele canal ainda não havia sido respondida em nenhum momento antes da tentativa de followUp
+- Como foi corrigido: substituição da chamada direta interaction.followUp() por respond(interaction, { embeds: [embed], components: [] }) no bloco final de processNextPrivateChannel, deixando a função respond() decidir corretamente entre update/reply/followUp
+- Estado atual do build: fluxo completo de categorias, canais públicos e privados com cargos funcional (pendente confirmação final da correção da mensagem de resumo)
+- Próximo passo único: confirmar que o fluxo fecha sem erro no terminal e com a mensagem final correta no Discord, depois criar novo checkpoint Git consolidando toda a fase de categorias como estável
+
+## Entrada de Log
+- Data/hora: 2026-07-26 06:22
+- Resumo do que foi feito: Corrigido bug crítico que travava o fluxo de aplicação de template antes de criar canais privados. Causa raiz: função showRoleMenu decidia usar interaction.update() baseado no tipo da interação (botão ou menu), mas não verificava se aquela interação já havia sido respondida anteriormente na mesma cadeia de chamadas (applyTemplate já havia chamado update na mesma interação antes de processNextPrivateChannel tentar chamar update de novo), causando erro DiscordjsError InteractionAlreadyReplied e travando o processo. Adicionado também disclaimer no rótulo do campo de texto do modal de criação de cargo, informando qual nome será usado caso o campo fique em branco.
+- Arquivos criados/alterados: bot/index.js (criada função respond centralizando a lógica de resposta a interações, checando interaction.replied/interaction.deferred antes de decidir entre update, reply ou followUp; todas as funções que respondem ao usuário no meio do fluxo - showCategoryMenu, showRoleMenu, applyTemplate - agora usam essa função ao invés de decidir isoladamente; label do TextInputBuilder do modal de novo cargo alterado para incluir o nome de fallback dinamicamente)
+- Decisões tomadas: Centralizar toda lógica de "como responder a uma interação" em uma única função, evitando que cada função do fluxo precise replicar a mesma checagem manualmente, o que já causou o bug anterior. Tratamento de erro no catch global também ajustado para checar replied/deferred antes de tentar responder, evitando erro duplo em caso de falha.
+- Erros encontrados: DiscordjsError [InteractionAlreadyReplied] ao processar canais privados após criação da categoria, travando o fluxo indefinidamente na tela "Criando canais..."
+- Como foi corrigido: substituição de todas as chamadas diretas a interaction.update()/reply() dentro do fluxo por chamadas à função respond(), que verifica o estado real da interação antes de decidir o método correto
+- Estado atual do build: fluxo completo de categorias corrigido (pendente confirmação do usuário), incluindo criação de canais privados após a categoria já ter sido processada
+- Próximo passo único: confirmar que o fluxo completo funciona sem travar, incluindo a criação efetiva dos canais privados dentro da categoria com os cargos corretos aplicados, depois criar novo checkpoint Git
+
+## Entrada de Log
+- Data/hora: 2026-07-26 06:10
+- Resumo do que foi feito: Reescrito bot/index.js implementando fluxo completo de categorias definido pelo usuário: seleção de template, seleção de categoria existente (com paginação Anterior/Próxima acima de 24 itens) ou criação de nova categoria via modal, definição de privacidade via botões, seleção múltipla de cargos com loop de criação de novo cargo via modal (reabrindo o menu com o cargo pré-marcado), aplicação da categoria com overwrites de permissão, criação dos canais públicos do template dentro da categoria, e loop subsequente perguntando cargo individualmente para cada canal marcado como privado no template (sobrepondo a config da categoria). Confirmado que não há necessidade de alteração no schema do banco ou no painel web, todo o fluxo de categoria é efêmero e vive em memória durante a execução do comando.
+- Arquivos criados/alterados: bot/index.js (reescrita completa: adicionado EmbedBuilder para toda comunicação visual, ButtonBuilder/ModalBuilder/TextInputBuilder para os novos componentes, sistema de paginação genérico via paginationRow/paginate, Map jobs substituindo pendingJobs anterior armazenando todo o estado do fluxo por interação, try/catch global no listener de interactionCreate para capturar erros não tratados sem derrubar o bot)
+- Decisões tomadas: Estado do fluxo mantido inteiramente em memória (Map), sem persistência no banco, já que categoria é decisão tomada em tempo de execução no Discord, não faz parte da estrutura salva do template. Canal privado individual sempre sobrepõe configuração da categoria (regra definida pelo usuário: isPrivate=true sempre aplica config própria, isPrivate=false sempre herda). Paginação implementada com botões Anterior/Próxima reais, trocando o conteúdo do menu, ao invés de corte silencioso. Adicionado tratamento de erro global (try/catch) no listener principal para evitar que uma falha inesperada em qualquer etapa do fluxo derrube o processo do bot inteiro.
+- Erros encontrados: nenhum ainda, aguardando teste do usuário
+- Como foi corrigido: N/A
+- Estado atual do build: fluxo completo de categorias implementado, aguardando teste end-to-end do usuário incluindo caminho de categoria nova privada com criação de cargo, e caminho de categoria já existente
+- Próximo passo único: testar fluxo completo (template → nova categoria → modal de nome → privada → criar novo cargo com nome em branco → confirmar seleção → canais criados dentro da categoria → pergunta de cargo por canal privado individual), reportar qualquer erro de terminal se ocorrer, e testar também o caminho alternativo de categoria já existente. Após confirmação, criar novo checkpoint Git.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 05:58
+- Resumo do que foi feito: Instalado Git no ambiente do usuário, configurada identidade (user.name e user.email), inicializado repositório na raiz do projeto, confirmado que .gitignore está protegendo corretamente node_modules e .env de entrarem no controle de versão. Criado primeiro checkpoint (commit) do projeto no estado atual: painel web completo (auth, CRUD de templates e canais, drag and drop) e bot funcional (comando slash, criação real de canais, vinculação de cargo em canais privados).
+- Arquivos criados/alterados: nenhum arquivo de código alterado nesta etapa, apenas inicialização do repositório Git (.git criado na raiz) e primeiro commit realizado
+- Decisões tomadas: Adotado Git como sistema de checkpoint do projeto. Processo definido: git add . + git commit -m "mensagem" para novos checkpoints, git checkout . para reverter mudanças não commitadas até o último checkpoint. Recomendado criar checkpoint novo a cada funcionalidade grande fechada.
+- Erros encontrados: nenhum, apenas avisos informativos de normalização de quebra de linha (LF para CRLF), comportamento padrão e inofensivo do Git no Windows
+- Como foi corrigido: N/A, não era um erro real
+- Estado atual do build: repositório Git inicializado e primeiro checkpoint criado com sucesso (pendente confirmação final do usuário do resultado de git commit e git log)
+- Próximo passo único: confirmar hash do commit via git log --oneline, depois iniciar implementação do fluxo completo de categorias definido pelo usuário: alteração do schema do banco (adicionar model Category vinculado a Template, e campo categoryId opcional em Channel), seguido de ajustes no painel web para gestão de categorias dentro de um template
+
+## Entrada de Log
 - Data/hora: 2026-07-26 05:48
 - Resumo do que foi feito: Criação real de canais confirmada funcionando (ordem, tipo, quantidade corretos). Implementado fluxo de vinculação de cargo para canais privados: após criar todos os canais, o bot itera sobre os canais privados um por um, busca a lista real de cargos do servidor via guild.roles.fetch(), e apresenta um menu de seleção múltipla para o usuário escolher quais cargos terão acesso a cada canal, aplicando permissionOverwrites.edit(roleId, { ViewChannel: true }) para cada cargo escolhido.
 - Arquivos criados/alterados: bot/index.js (adicionado Map pendingJobs para rastrear estado do processo de criação entre interações assíncronas do Discord, função createChannel extraída, função processNextPrivateChannel que gerencia a fila de canais privados pendentes de configuração de cargo, novo handler para customId dinâmico select-role-{jobId})

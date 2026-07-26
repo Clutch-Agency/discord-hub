@@ -33,10 +33,10 @@ export default async function TemplateEditor({ params }) {
   const addChannelWithId = addChannel.bind(null, id)
 
   return (
-    <div className="min-h-screen bg-slate-900">
-      <header className="border-b border-slate-800 bg-slate-950/50">
+    <div className="min-h-screen bg-clutch-gray">
+      <header className="border-b border-white/10 bg-[#1a1a1d]">
         <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Link href="/dashboard" className="text-slate-400 hover:text-white transition-colors">
+          <Link href="/dashboard" className="text-clutch-gray-lighter hover:text-white transition-colors">
             ← Voltar
           </Link>
           <h1 className="text-xl font-bold text-white">{template.name}</h1>
@@ -46,18 +46,18 @@ export default async function TemplateEditor({ params }) {
       <main className="max-w-5xl mx-auto px-6 py-10">
         <h2 className="text-lg font-semibold text-white mb-4">Adicionar canal</h2>
 
-        <form action={addChannelWithId} className="bg-slate-800/50 border border-slate-700 rounded-xl p-6 mb-10 space-y-4">
+        <form action={addChannelWithId} className="bg-[#1f1f23] border border-white/10 rounded-xl p-6 mb-10 space-y-4">
           <div className="flex gap-3">
             <input
               type="text"
               name="name"
               placeholder="Nome do canal"
               required
-              className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+              className="flex-1 bg-[#17171a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-clutch-gray-light focus:outline-none focus:border-clutch-pink"
             />
             <select
               name="type"
-              className="bg-slate-800 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-indigo-500"
+              className="bg-[#17171a] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-clutch-pink"
             >
               {CHANNEL_TYPES.map((t) => (
                 <option key={t.value} value={t.value}>
@@ -68,21 +68,21 @@ export default async function TemplateEditor({ params }) {
           </div>
 
           <label className="flex items-center gap-3 cursor-pointer w-fit">
-            <span className="text-slate-300 text-sm">Canal privado</span>
+            <span className="text-clutch-gray-lighter text-sm">Canal privado</span>
             <div className="relative">
               <input
                 type="checkbox"
                 name="isPrivate"
                 className="sr-only peer"
               />
-              <div className="w-11 h-6 bg-slate-700 rounded-full peer-checked:bg-indigo-600 transition-colors"></div>
+              <div className="w-11 h-6 bg-[#17171a] border border-white/10 rounded-full peer-checked:bg-clutch-pink transition-colors"></div>
               <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
             </div>
           </label>
 
           <button
             type="submit"
-            className="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-3 px-6 rounded-xl transition-colors"
+            className="bg-clutch-pink hover:bg-clutch-pink-dark text-white font-medium py-3 px-6 rounded-xl transition-colors"
           >
             Adicionar canal
           </button>

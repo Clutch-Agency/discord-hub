@@ -45,23 +45,23 @@ function SortableChannel({ channel, templateId }) {
     <div
       ref={setNodeRef}
       style={style}
-      className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex items-center justify-between"
+      className="bg-[#1f1f23] border border-white/10 rounded-xl p-4 flex items-center justify-between hover:border-clutch-pink/30 transition-colors"
     >
       <div className="flex items-center gap-3">
         <button
           {...attributes}
           {...listeners}
           type="button"
-          className="text-slate-500 hover:text-slate-300 cursor-grab active:cursor-grabbing px-1"
+          className="text-clutch-gray-light hover:text-clutch-gray-lighter cursor-grab active:cursor-grabbing px-1"
         >
           ⠿
         </button>
-        <span className="text-xs uppercase tracking-wide bg-slate-700 text-slate-300 px-2 py-1 rounded-md">
+        <span className="text-xs uppercase tracking-wide bg-[#17171a] border border-white/10 text-clutch-gray-lighter px-2 py-1 rounded-md">
           {CHANNEL_TYPES.find((t) => t.value === channel.type)?.label}
         </span>
         <span className="text-white">{channel.name}</span>
         {channel.isPrivate && (
-          <span className="text-xs bg-amber-900/50 text-amber-400 px-2 py-1 rounded-md">
+          <span className="text-xs bg-clutch-pink/10 text-clutch-pink px-2 py-1 rounded-md">
             🔒 privado
           </span>
         )}
@@ -105,8 +105,8 @@ export default function ChannelList({ templateId, initialChannels }) {
 
   if (channels.length === 0) {
     return (
-      <div className="border border-dashed border-slate-700 rounded-2xl p-16 text-center">
-        <p className="text-slate-400">Nenhum canal adicionado ainda.</p>
+      <div className="border border-dashed border-white/10 rounded-2xl p-16 text-center">
+        <p className="text-clutch-gray-lighter">Nenhum canal adicionado ainda.</p>
       </div>
     )
   }

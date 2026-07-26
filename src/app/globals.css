@@ -1,22 +1,38 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #17171a;
+  --foreground: #f4f4f5;
+
+  --clutch-pink: #f92c6e;
+  --clutch-pink-light: #f17e9b;
+  --clutch-pink-dark: #7a1734;
+  --clutch-wine: #3b0a14;
+  --clutch-blue: #1ebbf5;
+  --clutch-blue-dark: #1c7b9c;
+  --clutch-green: #2ef5b0;
+  --clutch-green-dark: #1c9c6e;
+  --clutch-gray: #232323;
+  --clutch-gray-light: #565656;
+  --clutch-gray-lighter: #c4c4c4;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-clutch-pink: var(--clutch-pink);
+  --color-clutch-pink-light: var(--clutch-pink-light);
+  --color-clutch-pink-dark: var(--clutch-pink-dark);
+  --color-clutch-wine: var(--clutch-wine);
+  --color-clutch-blue: var(--clutch-blue);
+  --color-clutch-blue-dark: var(--clutch-blue-dark);
+  --color-clutch-green: var(--clutch-green);
+  --color-clutch-green-dark: var(--clutch-green-dark);
+  --color-clutch-gray: var(--clutch-gray);
+  --color-clutch-gray-light: var(--clutch-gray-light);
+  --color-clutch-gray-lighter: var(--clutch-gray-lighter);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
