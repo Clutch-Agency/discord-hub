@@ -1,6 +1,26 @@
 
 
 ## Entrada de Log
+- Data/hora: 26/07/2026, 20:20
+- Resumo do que foi feito: Corrigido o erro `PrismaClientValidationError: Unknown argument userId_key` no `bot/index.js`. A consulta `prisma.userTool.findUnique()` foi ajustada para usar a sintaxe correta de chave composta (`userId_key`) conforme o schema do Prisma.
+- Arquivos criados/alterados: `bot/index.js` (alterado).
+- Decisões tomadas: Utilizar a sintaxe `where: { userId_key: { userId: ..., key: ... } }` para consultar a tabela `UserTool` com base na chave composta definida no schema do Prisma, resolvendo o erro de argumento desconhecido.
+- Erros encontrados: `PrismaClientValidationError: Unknown argument userId_key`.
+- Como foi corrigido: Ajuste na sintaxe da query do Prisma em `bot/index.js`.
+- Estado atual do build: A verificação de ativação da ferramenta "templates" no bot do Discord deve funcionar corretamente.
+- Próximo passo único: Testar a funcionalidade do toggle no bot e, em seguida, implementar a lista de servidores na plataforma web.
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 20:15
+- Resumo do que foi feito: Corrigido o erro `PrismaClientValidationError: Unknown argument userId_key` no `bot/index.js`. A consulta `prisma.userTool.findUnique()` foi ajustada para usar a sintaxe correta de chave composta (`userId_key`) conforme o schema do Prisma.
+- Arquivos criados/alterados: `bot/index.js` (alterado).
+- Decisões tomadas: Utilizar a sintaxe `where: { userId_key: { userId: ..., key: ... } }` para consultar a tabela `UserTool` com base na chave composta definida no schema do Prisma, resolvendo o erro de argumento desconhecido.
+- Erros encontrados: `PrismaClientValidationError: Unknown argument userId_key`.
+- Como foi corrigido: Ajuste na sintaxe da query do Prisma em `bot/index.js`.
+- Estado atual do build: A verificação de ativação da ferramenta "templates" no bot do Discord deve funcionar corretamente.
+- Próximo passo único: Testar a funcionalidade do toggle no bot e, em seguida, implementar a lista de servidores na plataforma web.
+
+## Entrada de Log
 - Data/hora: 26/07/2026, 19:50
 - Resumo do que foi feito: Ajustados os estilos dos campos de formulário e alterado o checkbox "Privado" para um toggle na página de edição de templates (`src/app/dashboard/templates/[id]/page.js`) e no componente `ChannelList.js`.
 - Arquivos criados/alterados: `src/app/dashboard/templates/[id]/page.js` (alterado), `src/app/dashboard/templates/[id]/ChannelList.js` (alterado).

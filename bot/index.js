@@ -254,7 +254,7 @@ async function processNextPrivateChannel(interaction, job) {
   if (job.privateChannelIndex >= job.remainingPrivateChannels.length) {
     const embed = baseEmbed(
       "Template aplicado",
-      `${job.createdCount} canal(is) criado(s) com sucesso dentro de **${job.category.name}**.${
+      `${job.createdCount} canal(is) criado(s) com sucesso dentro de **${job.category.name}**. ${
         job.failedNames.length > 0 ? `\n\n${job.failedNames.length} falharam: ${job.failedNames.join(", ")}.` : ""
       }`
     )
@@ -364,6 +364,25 @@ client.on("interactionCreate", async (interaction) => {
         })
         return
       }
+
+      // Nova verificação para o status da ferramenta "templates"
+      const userTool = await prisma.userTool.findUnique({
+        where: {
+          userId_toolKey: {
+            userId: account.userId, // Usar o userId da conta vinculada
+            toolKey: 'templates',
+          },
+        },
+      });
+
+      if (!userTool || !userTool.enabled) {
+        await interaction.reply({
+          content: 'A ferramenta de templates não está ativada para sua conta. Ative-a no painel web.',
+          ephemeral: true,
+        });
+        return;
+      }
+      // Fim da nova verificação
 
       await showTemplateMenu(interaction, account.userId)
       return

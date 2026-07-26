@@ -2,11 +2,12 @@ import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { getUserToolsState } from "@/lib/user-tools"
 import Link from "next/link"
-import { LayoutTemplate, Check, X } from "lucide-react"
+import { LayoutTemplate, Check, X, Server } from "lucide-react"
 import { toggleTool } from "@/app/dashboard/tools-actions"
 
 const ICONS = {
   LayoutTemplate: LayoutTemplate,
+  Server: Server,
 }
 
 export default async function Dashboard() {
@@ -18,12 +19,15 @@ export default async function Dashboard() {
 
   const tools = await getUserToolsState(session.user.id)
 
+  // Filtra as ferramentas que não são "core" para exibir nos cards
+  const nonCoreTools = tools.filter(tool => !tool.isCore)
+
   return (
     <div>
       <h2 className="text-2xl font-bold text-white mb-8">Ferramentas do Hub</h2>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {tools.map((tool) => {
+        {nonCoreTools.map((tool) => {
           const Icon = ICONS[tool.icon] || LayoutTemplate
 
           const cardContent = (
@@ -40,7 +44,6 @@ export default async function Dashboard() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {/* Removida a label "Ativada" / "Desativada" */}
                   <form action={toggleTool.bind(null, tool.key, !tool.enabled)}>
                     <button
                       type="submit"

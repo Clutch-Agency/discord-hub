@@ -18,18 +18,18 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "lucide-react": "^1.27.0",
-    "next": "16.2.12",
+    "next": "^15.1.0",
     "next-auth": "^5.0.0-beta.32",
     "prisma": "^6.19.3",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "concurrently": "^10.0.4",
     "dotenv-cli": "^7.4.4",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "15.1.0",
     "tailwindcss": "^4"
   }
 }

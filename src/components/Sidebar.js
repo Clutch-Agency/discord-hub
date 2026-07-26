@@ -2,15 +2,20 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutTemplate, Home } from "lucide-react"
+import { LayoutTemplate, Home, Server } from "lucide-react"
 import { toggleTool } from "@/app/dashboard/tools-actions"
 
 const ICONS = {
   LayoutTemplate: LayoutTemplate,
+  Server: Server,
 }
 
 export default function Sidebar({ tools }) {
   const pathname = usePathname()
+
+  // Separa as ferramentas core das outras para exibição
+  const coreTools = tools.filter(tool => tool.isCore)
+  const otherTools = tools.filter(tool => !tool.isCore)
 
   return (
     <aside className="w-64 bg-[#1a1a1d] border-r border-white/10 flex flex-col py-6 px-4">
@@ -26,10 +31,29 @@ export default function Sidebar({ tools }) {
         Home
       </Link>
 
-      <div className="h-px bg-white/10 mb-4" />
+      {/* Exibe as ferramentas core (Servidores) */}
+      {coreTools.map((tool) => {
+        const Icon = ICONS[tool.icon] || LayoutTemplate
+        const isActive = pathname.startsWith(tool.href)
+        return (
+          <Link
+            key={tool.key}
+            href={tool.href}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${
+              isActive ? "bg-clutch-pink/10 text-clutch-pink" : "text-clutch-gray-lighter hover:text-white hover:bg-white/5"
+            }`}
+          >
+            <Icon size={18} />
+            <span className="truncate">{tool.name}</span>
+          </Link>
+        )
+      })}
 
+      <div className="h-px bg-white/10 my-4" /> {/* Separador */}
+
+      {/* Exibe as outras ferramentas (Templates) */}
       <div className="flex flex-col gap-1">
-        {tools.map((tool) => {
+        {otherTools.map((tool) => {
           const Icon = ICONS[tool.icon] || LayoutTemplate
           const isActive = pathname.startsWith(tool.href)
 
