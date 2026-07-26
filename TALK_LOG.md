@@ -1,6 +1,16 @@
 
 
 ## Entrada de Log
+- Data/hora: 26/07/2026, 16:29
+- Resumo do que foi feito: Corrigido conflito de roteamento no Nginx entre a aplicação Readsy e o Discord Hub (havia bloco server_name discord-hub.clutch.com.br duplicado dentro do arquivo default). Migrada a conexão do Prisma para o Session Pooler do Supabase, resolvendo falha de conexão direta via IPv6. Identificada e corrigida instabilidade de DNS na VPS, causada por servidor DNS IPv6 sem rota de saída. Migrada a aplicação de execução manual (npm run start em terminal aberto) para gerenciamento via pm2, com persistência configurada para reboot da VPS. Removidas instâncias duplicadas do pm2 que geravam conflito de sessão do bot.
+- Arquivos criados/alterados: /etc/nginx/sites-available/default, /etc/nginx/sites-available/discord-hub.clutch.com.br, /root/discord-hub/.env (variável DATABASE_URL), /etc/systemd/resolved.conf.
+- Decisões tomadas: usar Session Pooler do Supabase (porta 5432, host aws-0-sa-east-1.pooler.supabase.com) em vez de conexão direta ao banco. Gerenciar a aplicação via pm2 com processo único discord-hub-web (rodando npm run start, que já sobe web e bot juntos via concurrently), sem processo separado para o bot.
+- Erros encontrados: roteamento errado por server_name duplicado; Can't reach database server por incompatibilidade IPv6 na porta 5432 direta; DNS instável causando falhas intermitentes de resolução (inclusive para google.com); instância duplicada do pm2 gerando dois processos do bot com o mesmo token.
+- Como foi corrigido: remoção dos blocos duplicados do default; troca da DATABASE_URL para o pooler; ajuste do DNS= e FallbackDNS= em resolved.conf para 1.1.1.1, 8.8.8.8, 9.9.9.9, 1.0.0.1; pm2 delete das instâncias duplicadas, mantendo apenas uma.
+- Estado atual do build: aplicação web e bot rodando de forma estável via pm2 (discord-hub-web), com persistência configurada via pm2 startup e pm2 save. Login funcionando, banco conectando normalmente, bot respondendo sem conflito de sessão.
+- Próximo passo único: nenhum pendente. Aguardando próxima demanda de melhoria.
+
+## Entrada de Log
 - Data/hora: 2026-07-26 07:15
 - Resumo do que foi feito: Iniciada implementação de listagem e remoção de servidores onde o bot está instalado. Decisão de arquitetura confirmada com o usuário: painel web e bot rodam na mesma máquina (Hostinger), então optou-se por expor uma API HTTP interna simples no próprio processo do bot (usando express), rodando em localhost com autenticação via header secreto (x-bot-secret), ao invés de criar tabela intermediária no banco. Instalada dependência express, criado arquivo de rotas dedicado (bot/api.js) com endpoint GET /guilds (lista servidores) e DELETE /guilds/:id (remove o bot de um servidor específico via guild.leave()), e conectada a subida dessa API ao evento clientReady do bot.
 - Arquivos criados/alterados: package.json (dependência express adicionada), .env (novas variáveis BOT_API_SECRET e BOT_API_PORT), bot/api.js (novo arquivo, contém toda a lógica da API HTTP interna do bot), bot/index.js (import de startBotApi, chamada de startBotApi(client) dentro do listener clientReady)

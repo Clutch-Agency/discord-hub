@@ -301,9 +301,44 @@ async function createPendingPrivateChannel(interaction, job) {
   await processNextPrivateChannel(interaction, job)
 }
 
+async function sendWelcomeMessage(guild) {
+  try {
+    let channel = guild.channels.cache.find((c) => c.name === "clutch-bot" && c.type === ChannelType.GuildText)
+
+    if (!channel) {
+      channel = await guild.channels.create({
+        name: "clutch-bot",
+        type: ChannelType.GuildText,
+        topic: "Canal de instruções do Clutch Hub",
+      })
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2)
+      .setTitle("Bem-vindo ao Clutch Hub")
+      .setDescription("Este bot cria a estrutura de canais e cargos do seu servidor a partir de templates configurados na plataforma web.")
+      .addFields(
+        { name: "1. Vincule sua conta", value: "Acesse https://discord-hub.clutch.com.br e faça login com o mesmo usuário do Discord que você usa neste servidor." },
+        { name: "2. Crie um template", value: "Na plataforma, crie um template definindo quais canais devem ser gerados." },
+        { name: "3. Aplique no servidor", value: "Use o comando /aplicar-template aqui no Discord para escolher o template e aplicá-lo." },
+        { name: "4. Escolha a categoria", value: "Selecione uma categoria já existente ou crie uma nova para receber os canais do template." },
+        { name: "5. Defina permissões", value: "Se a categoria ou algum canal for privado, escolha quais cargos terão acesso, ou crie um novo cargo na hora." }
+      )
+      .setFooter({ text: "Dúvidas? Fale com quem administra este bot." })
+
+    await channel.send({ embeds: [embed] })
+  } catch (error) {
+    console.log("Erro ao criar canal de boas-vindas:", error.message)
+  }
+}
+
 client.once("clientReady", () => {
   console.log(`Bot conectado como ${client.user.tag}`)
   startBotApi(client)
+})
+
+client.on("guildCreate", async (guild) => {
+  await sendWelcomeMessage(guild)
 })
 
 client.on("interactionCreate", async (interaction) => {

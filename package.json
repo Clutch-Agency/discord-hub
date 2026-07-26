@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"next dev\" \"node bot/index.js\"",
+    "dev": "concurrently \"dotenv -e .env -- next dev\" \"node bot/index.js\"",
     "build": "next build",
-    "start": "concurrently \"next start\" \"node bot/index.js\"",
+    "start": "concurrently \"dotenv -e .env -- next start\" \"node bot/index.js\"",
     "lint": "eslint"
   },
   "dependencies": {
@@ -26,6 +26,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "concurrently": "^10.0.4",
+    "dotenv-cli": "^7.4.4",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
     "tailwindcss": "^4"
