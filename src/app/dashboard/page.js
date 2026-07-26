@@ -1,7 +1,13 @@
-import { auth, signOut } from "@/auth"
+import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { createTemplate, getTemplates, deleteTemplate } from "./actions"
+import { getUserToolsState } from "@/lib/user-tools"
 import Link from "next/link"
+import { LayoutTemplate, Check, X } from "lucide-react"
+import { toggleTool } from "@/app/dashboard/tools-actions"
+
+const ICONS = {
+  LayoutTemplate: LayoutTemplate,
+}
 
 export default async function Dashboard() {
   const session = await auth()
@@ -10,102 +16,62 @@ export default async function Dashboard() {
     redirect("/")
   }
 
-  const templates = await getTemplates()
+  const tools = await getUserToolsState(session.user.id)
 
   return (
-    <div className="min-h-screen bg-clutch-gray">
-      <header className="border-b border-white/10 bg-[#1a1a1d]">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
-          <img src="/logo/logo-white.png" alt="Clutch" className="h-7" />
-          <div className="flex items-center gap-4">
-            <a
-              href="https://discord.com/oauth2/authorize?client_id=1530768967935721553&permissions=8&integration_type=0&scope=bot"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-clutch-blue hover:bg-clutch-blue-dark text-white text-sm font-medium py-2 px-4 rounded-xl transition-colors"
-            >
-              Conectar bot ao servidor
-            </a>
-                        <Link
-              href="/dashboard/servers"
-              className="text-clutch-gray-lighter hover:text-white text-sm transition-colors"
-            >
-              Ver servidores
-            </Link>
-            <img
-              src={session.user.image}
-              alt="avatar"
-              className="w-9 h-9 rounded-full border border-white/10"
-            />
-            <span className="text-clutch-gray-lighter text-sm">{session.user.name}</span>
-            <form
-              action={async () => {
-                "use server"
-                await signOut()
-              }}
-            >
-              <button
-                type="submit"
-                className="text-clutch-gray-lighter hover:text-white text-sm transition-colors"
-              >
-                Sair
-              </button>
-            </form>
-          </div>
-        </div>
-      </header>
+    <div>
+      <h2 className="text-2xl font-bold text-white mb-8">Ferramentas do Hub</h2>
 
-      <main className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-bold text-white">Seus Templates</h2>
-        </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {tools.map((tool) => {
+          const Icon = ICONS[tool.icon] || LayoutTemplate
 
-        <form action={createTemplate} className="flex gap-3 mb-10">
-          <input
-            type="text"
-            name="name"
-            placeholder="Nome do novo template"
-            required
-            className="flex-1 bg-[#1f1f23] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-clutch-gray-light focus:outline-none focus:border-clutch-pink"
-          />
-          <button
-            type="submit"
-            className="bg-clutch-pink hover:bg-clutch-pink-dark text-white font-medium py-3 px-6 rounded-xl transition-colors"
-          >
-            Criar
-          </button>
-        </form>
+          const cardContent = (
+            <div
+              className={`bg-[#1f1f23] border rounded-2xl p-6 h-full transition-colors ${
+                tool.enabled
+                  ? "border-white/10 hover:border-clutch-pink/40"
+                  : "border-white/5 opacity-60"
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className="w-11 h-11 rounded-xl bg-clutch-pink/10 flex items-center justify-center">
+                  <Icon size={22} className="text-clutch-pink" />
+                </div>
 
-        {templates.length === 0 ? (
-          <div className="border border-dashed border-white/10 rounded-2xl p-16 text-center">
-            <p className="text-clutch-gray-lighter">Você ainda não criou nenhum template.</p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {templates.map((template) => (
-              <div
-                key={template.id}
-                className="bg-[#1f1f23] border border-white/10 rounded-xl p-5 flex items-center justify-between hover:border-clutch-pink/40 transition-colors"
-              >
-                <Link
-                  href={`/dashboard/templates/${template.id}`}
-                  className="text-white font-medium hover:text-clutch-pink transition-colors"
-                >
-                  {template.name}
-                </Link>
-                <form action={deleteTemplate.bind(null, template.id)}>
-                  <button
-                    type="submit"
-                    className="text-red-400 hover:text-red-300 text-sm transition-colors"
-                  >
-                    Excluir
-                  </button>
-                </form>
+                <div className="flex items-center gap-2">
+                  {/* Removida a label "Ativada" / "Desativada" */}
+                  <form action={toggleTool.bind(null, tool.key, !tool.enabled)}>
+                    <button
+                      type="submit"
+                      className={`relative w-9 h-5 rounded-full transition-colors flex-shrink-0 ${
+                        tool.enabled ? "bg-clutch-pink" : "bg-white/10"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                          tool.enabled ? "translate-x-4" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  </form>
+                </div>
               </div>
-            ))}
-          </div>
-        )}
-      </main>
+
+              <h3 className="text-white font-semibold mb-1">{tool.name}</h3>
+              <p className="text-clutch-gray-lighter text-sm">{tool.description}</p>
+            </div>
+          )
+
+          return tool.enabled ? (
+            <Link key={tool.key} href={tool.href}>
+              {cardContent}
+            </Link>
+          ) : (
+            <div key={tool.key}>{cardContent}</div>
+          )
+        })}
+      </div>
     </div>
   )
 }

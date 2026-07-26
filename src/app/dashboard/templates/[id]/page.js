@@ -1,97 +1,99 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { prisma } from "@/lib/prisma"
-import Link from "next/link"
-import { addChannel } from "./actions"
+import { getTemplate, updateTemplateName, addChannel, updateChannel, deleteChannel, updateChannelOrder } from "./actions"
 import ChannelList from "./ChannelList"
+import { isToolEnabled } from "@/lib/user-tools"
 
 const CHANNEL_TYPES = [
   { value: "TEXT", label: "Texto" },
   { value: "VOICE", label: "Voz" },
   { value: "FORUM", label: "Fórum" },
-  { value: "ANNOUNCEMENT", label: "Announcements" },
-  { value: "STAGE", label: "Palco" },
+  { value: "ANNOUNCEMENT", label: "Anúncios" },
 ]
 
-export default async function TemplateEditor({ params }) {
+export default async function TemplateDetailsPage({ params }) {
   const session = await auth()
   if (!session) redirect("/")
 
+  const enabled = await isToolEnabled(session.user.id, "templates")
+  if (!enabled) {
+    redirect("/dashboard")
+  }
+
+  // Desestruturar o id de params usando await
   const { id } = await params
 
-  const template = await prisma.template.findFirst({
-    where: { id, userId: session.user.id },
-    include: {
-      channels: {
-        orderBy: { order: "asc" },
-      },
-    },
-  })
+  if (!id) {
+    // Se o ID não for válido, redirecionar para a lista de templates
+    redirect("/dashboard/templates");
+  }
 
-  if (!template) redirect("/dashboard")
+  const template = await getTemplate(id)
 
-  const addChannelWithId = addChannel.bind(null, id)
+  if (!template || template.userId !== session.user.id) {
+    redirect("/dashboard/templates")
+  }
 
   return (
-    <div className="min-h-screen bg-clutch-gray">
-      <header className="border-b border-white/10 bg-[#1a1a1d]">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center gap-4">
-          <Link href="/dashboard" className="text-clutch-gray-lighter hover:text-white transition-colors">
-            ← Voltar
-          </Link>
-          <h1 className="text-xl font-bold text-white">{template.name}</h1>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-6 py-10">
-        <h2 className="text-lg font-semibold text-white mb-4">Adicionar canal</h2>
-
-        <form action={addChannelWithId} className="bg-[#1f1f23] border border-white/10 rounded-xl p-6 mb-10 space-y-4">
-          <div className="flex gap-3">
-            <input
-              type="text"
-              name="name"
-              placeholder="Nome do canal"
-              required
-              className="flex-1 bg-[#17171a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-clutch-gray-light focus:outline-none focus:border-clutch-pink"
-            />
-            <select
-              name="type"
-              className="bg-[#17171a] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-clutch-pink"
-            >
-              {CHANNEL_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <label className="flex items-center gap-3 cursor-pointer w-fit">
-            <span className="text-clutch-gray-lighter text-sm">Canal privado</span>
-            <div className="relative">
-              <input
-                type="checkbox"
-                name="isPrivate"
-                className="sr-only peer"
-              />
-              <div className="w-11 h-6 bg-[#17171a] border border-white/10 rounded-full peer-checked:bg-clutch-pink transition-colors"></div>
-              <div className="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5"></div>
-            </div>
-          </label>
-
+    <div>
+      <div className="flex items-center justify-between mb-8">
+        <h2 className="text-2xl font-bold text-white">Editar Template: {template.name}</h2>
+        <form action={updateTemplateName.bind(null, template.id)}>
+          <input
+            type="text"
+            name="name"
+            defaultValue={template.name}
+            className="bg-[#1f1f23] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-clutch-gray-light focus:outline-none focus:border-clutch-pink"
+          />
           <button
             type="submit"
-            className="bg-clutch-pink hover:bg-clutch-pink-dark text-white font-medium py-3 px-6 rounded-xl transition-colors"
+            className="ml-3 bg-clutch-pink hover:bg-clutch-pink-dark text-white font-medium py-3 px-6 rounded-xl transition-colors"
           >
-            Adicionar canal
+            Salvar
           </button>
         </form>
+      </div>
 
-        <h2 className="text-lg font-semibold text-white mb-4">Canais do template</h2>
+      <h3 className="text-xl font-bold text-white mb-4">Canais</h3>
 
-        <ChannelList templateId={id} initialChannels={template.channels} />
-      </main>
+      <form action={addChannel.bind(null, template.id)} className="flex gap-3 mb-10">
+        <input
+          type="text"
+          name="name"
+          placeholder="Nome do novo canal"
+          required
+          className="flex-1 bg-[#1f1f23] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-clutch-gray-light focus:outline-none focus:border-clutch-pink"
+        />
+        <select
+          name="type"
+          className="bg-[#1f1f23] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-clutch-pink"
+        >
+          {CHANNEL_TYPES.map((type) => (
+            <option key={type.value} value={type.value}>
+              {type.label}
+            </option>
+          ))}
+        </select>
+        <div className="flex items-center gap-2">
+          <input type="checkbox" name="isPrivate" id="isPrivate" className="w-4 h-4 text-clutch-pink bg-gray-700 border-gray-600 rounded focus:ring-clutch-pink focus:ring-2" />
+          <label htmlFor="isPrivate" className="text-clutch-gray-lighter text-sm">Privado</label>
+        </div>
+        <button
+          type="submit"
+          className="bg-clutch-pink hover:bg-clutch-pink-dark text-white font-medium py-3 px-6 rounded-xl transition-colors"
+        >
+          Adicionar
+        </button>
+      </form>
+
+      <ChannelList
+        templateId={template.id}
+        channels={template.channels}
+        updateChannel={updateChannel}
+        deleteChannel={deleteChannel}
+        updateChannelOrder={updateChannelOrder}
+        channelTypes={CHANNEL_TYPES}
+      />
     </div>
   )
 }

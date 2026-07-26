@@ -20,7 +20,7 @@ export async function createTemplate(formData) {
   })
 
   revalidatePath("/dashboard")
-  redirect(`/dashboard/templates/${template.id}`)
+  redirect(`/dashboard/templates/${template.id}`) // Ajustado para a nova rota
 }
 
 export async function getTemplates() {
@@ -42,4 +42,5 @@ export async function deleteTemplate(id) {
   })
 
   revalidatePath("/dashboard")
+  revalidatePath("/dashboard/templates") // Adicionado para revalidar a lista de templates
 }

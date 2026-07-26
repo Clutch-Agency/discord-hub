@@ -1,6 +1,86 @@
 
 
 ## Entrada de Log
+- Data/hora: 26/07/2026, 19:50
+- Resumo do que foi feito: Ajustados os estilos dos campos de formulário e alterado o checkbox "Privado" para um toggle na página de edição de templates (`src/app/dashboard/templates/[id]/page.js`) e no componente `ChannelList.js`.
+- Arquivos criados/alterados: `src/app/dashboard/templates/[id]/page.js` (alterado), `src/app/dashboard/templates/[id]/ChannelList.js` (alterado).
+- Decisões tomadas: Melhorar a experiência do usuário com campos de formulário mais profissionais e um toggle para a opção "Privado", conforme solicitado.
+- Erros encontrados: Nenhum.
+- Como foi corrigido: Não aplicável.
+- Estado atual do build: A página de edição de templates deve apresentar os novos estilos e o toggle.
+- Próximo passo único: Testar a criação, edição e exclusão de canais, e a reordenação de canais para garantir que tudo funciona com as novas alterações visuais.
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 18:55
+- Resumo do que foi feito: Corrigido o erro `params is a Promise` em `src/app/dashboard/templates/[id]/page.js` usando `await params` para desestruturar o `id`. Reforçada a aplicação da configuração do `next.config.mjs` para o Turbopack.
+- Arquivos criados/alterados: `src/app/dashboard/templates/[id]/page.js` (alterado), `next.config.mjs` (alterado/criado).
+- Decisões tomadas: Aplicar a recomendação explícita do Next.js para Server Components em relação a `params` e garantir a configuração do Turbopack para o Prisma.
+- Erros encontrados: `Error: Route "/dashboard/templates/[id]" used params.id. params is a Promise...` e `PrismaClientValidationError`.
+- Como foi corrigido: Uso de `await params` e configuração do `next.config.mjs`.
+- Estado atual do build: Espera-se que a página de edição de templates carregue e funcione corretamente.
+- Próximo passo único: Testar a edição de templates, incluindo a criação, atualização e exclusão de canais, e a reordenação de canais.
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 18:22
+- Resumo do que foi feito: Erros `AdapterError` e `SessionTokenError` foram reportados na home da aplicação, causados por `PrismaClientKnownRequestError: The table public.Session does not exist in the current database.`. Isso indica que as tabelas do Prisma não foram criadas no banco de dados.
+- Arquivos criados/alterados: nenhum.
+- Decisões tomadas: priorizar a correção da camada de dados antes de continuar com a interface.
+- Erros encontrados: `PrismaClientKnownRequestError: The table public.Session does not exist in the current database.`
+- Como foi corrigido: instrução para verificar `DATABASE_URL`, confirmar existência das tabelas no Supabase e rodar `npx prisma migrate dev --name init` novamente.
+- Estado atual do build: tabelas do banco de dados provavelmente ausentes ou incorretas.
+- Próximo passo único: garantir que as tabelas do Prisma (incluindo `Session` e `UserTool`) existam no banco de dados do Supabase.
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 18:20
+- Resumo do que foi feito: `npx prisma generate` executado com sucesso. Implementação dos passos restantes para a nova estrutura da área logada: ajuste de `src/auth.js`, criação de `src/app/dashboard/layout.js`, criação de `src/components/Sidebar.js`, substituição de `src/app/dashboard/page.js` pela nova home, e ajuste de `src/app/dashboard/servers/page.js`.
+- Arquivos criados/alterados: `src/auth.js` (alterado), `src/app/dashboard/layout.js` (novo), `src/components/Sidebar.js` (novo), `src/app/dashboard/page.js` (substituído), `src/app/dashboard/servers/page.js` (alterado).
+- Decisões tomadas: `user.id` adicionado à sessão via `callbacks` do NextAuth. Layout principal (`src/app/dashboard/layout.js`) agora gerencia o header e o sidebar. `src/app/dashboard/page.js` se tornou a home com cards de ferramentas. `src/app/dashboard/servers/page.js` teve seu header removido para evitar duplicação.
+- Erros encontrados: nenhum.
+- Como foi corrigido: não aplicável.
+- Estado atual do build: todos os arquivos para a nova estrutura da área logada foram criados/alterados.
+- Próximo passo único: testar o fluxo completo localmente (ativar/desativar ferramenta pelo menu e pela home, confirmar bloqueio de acesso direto à URL de templates quando desativado, verificar tela de servidores) e reportar quaisquer problemas.
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 18:19
+- Resumo do que foi feito: `npx prisma generate` falhou novamente com erro `EPERM` após limpeza de cache e reinstalação.
+- Arquivos criados/alterados: nenhum.
+- Decisões tomadas: instrução para fechar todos os terminais e editores de código, e reiniciar o computador para liberar o arquivo `query_engine-windows.dll.node`.
+- Erros encontrados: `EPERM: operation not permitted, rename` ao rodar `npx prisma generate`.
+- Como foi corrigido: instrução para reiniciar o computador e rodar `npx prisma generate` novamente.
+- Estado atual do build: Prisma Client ainda não gerado corretamente.
+- Próximo passo único: reiniciar o computador e rodar `npx prisma generate`.
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 18:18
+- Resumo do que foi feito: `prisma migrate reset` executado com sucesso, mas a geração do Prisma Client falhou com erro de permissão (`EPERM`). Tentativa de correção limpando cache do npm, reinstalando dependências e gerando o Prisma Client manualmente.
+- Arquivos criados/alterados: nenhum arquivo de código alterado nesta etapa, apenas comandos de terminal.
+- Decisões tomadas: uso de `npm cache clean --force`, `npm install` e `npx prisma generate` para resolver o erro de permissão na geração do Prisma Client.
+- Erros encontrados: `EPERM: operation not permitted, rename` durante a geração do Prisma Client após `prisma migrate reset`.
+- Como foi corrigido: limpeza de cache, reinstalação de dependências e geração manual do Prisma Client.
+- Estado atual do build: Prisma Client deve estar gerado corretamente.
+- Próximo passo único: continuar a implementação a partir do passo 4 da mensagem anterior (ajustar `src/auth.js`), e depois testar o fluxo completo localmente.
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 18:14
+- Resumo do que foi feito: corrigido erro de `Drift detected` do Prisma com `prisma migrate reset`. Criada a pasta `src/app/dashboard/templates` e movido o conteúdo da antiga tela de templates (`src/app/dashboard/page.js`) para `src/app/dashboard/templates/page.js`. Ajustado `src/app/dashboard/actions.js` para refletir a nova rota de templates.
+- Arquivos criados/alterados: `prisma/schema.prisma` (model `UserTool` adicionado), `src/app/dashboard/templates/page.js` (novo, conteúdo migrado), `src/app/dashboard/actions.js` (alterado).
+- Decisões tomadas: `prisma migrate reset` usado para sincronizar o schema do banco de dados. Estrutura de pastas ajustada para acomodar a nova home e a página de listagem de templates.
+- Erros encontrados: `Drift detected` ao rodar `npx prisma migrate dev`.
+- Como foi corrigido: `npx prisma migrate reset` foi executado para resetar o banco e aplicar as migrations.
+- Estado atual do build: pendente de continuar os passos de criação do layout, sidebar e nova home, e instalação de `lucide-react`.
+- Próximo passo único: continuar a implementação a partir do passo 4 da mensagem anterior (ajustar `src/auth.js`).
+
+## Entrada de Log
+- Data/hora: 26/07/2026, 18:07
+- Resumo do que foi feito: reestruturada a área logada da plataforma para suportar múltiplas ferramentas. Criado sistema de habilitar/desabilitar ferramentas por usuário, menu lateral fixo, e nova home com cards de status. A ferramenta de templates foi movida de /dashboard para /dashboard/templates, sem alteração na lógica interna dela. Ajustado src/auth.js para incluir user.id na sessão. Ajustado src/app/dashboard/servers/page.js para remover header duplicado.
+- Arquivos criados/alterados: prisma/schema.prisma (novo model UserTool), src/lib/user-tools.js (novo), src/app/dashboard/tools-actions.js (novo), src/auth.js (alterado), src/app/dashboard/layout.js (novo), src/components/Sidebar.js (novo), src/app/dashboard/page.js (substituído), src/app/dashboard/templates/page.js (novo, conteúdo migrado do antigo dashboard/page.js), src/app/dashboard/servers/page.js (alterado), src/app/dashboard/actions.js (alterado).
+- Decisões tomadas: estado de ativação das ferramentas fica em tabela própria (UserTool), vinculada por userId e toolKey, permitindo adicionar novas ferramentas apenas editando o array TOOLS em src/lib/tools.js. Acesso a /dashboard/templates é bloqueado via redirect se a ferramenta estiver desativada, tanto no menu quanto na própria página. user.id adicionado à sessão via callbacks do NextAuth.
+- Erros encontrados: nenhum ainda, aguardando teste do usuário.
+- Como foi corrigido: não aplicável.
+- Estado atual do build: pendente de teste local após criação dos arquivos, instalação de lucide-react e execução de npx prisma migrate dev --name add_user_tools.
+- Próximo passo único: testar o fluxo completo localmente (ativar/desativar ferramenta pelo menu e pela home, confirmar bloqueio de acesso direto à URL de templates quando desativado, verificar tela de servidores) e reportar quaisquer problemas.
+
+## Entrada de Log
 - Data/hora: 26/07/2026, 16:29
 - Resumo do que foi feito: Corrigido conflito de roteamento no Nginx entre a aplicação Readsy e o Discord Hub (havia bloco server_name discord-hub.clutch.com.br duplicado dentro do arquivo default). Migrada a conexão do Prisma para o Session Pooler do Supabase, resolvendo falha de conexão direta via IPv6. Identificada e corrigida instabilidade de DNS na VPS, causada por servidor DNS IPv6 sem rota de saída. Migrada a aplicação de execução manual (npm run start em terminal aberto) para gerenciamento via pm2, com persistência configurada para reboot da VPS. Removidas instâncias duplicadas do pm2 que geravam conflito de sessão do bot.
 - Arquivos criados/alterados: /etc/nginx/sites-available/default, /etc/nginx/sites-available/discord-hub.clutch.com.br, /root/discord-hub/.env (variável DATABASE_URL), /etc/systemd/resolved.conf.
