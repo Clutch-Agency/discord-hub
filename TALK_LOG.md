@@ -1,6 +1,328 @@
 
 
 ## Entrada de Log
+- Data/hora: 2026-07-27 00:35
+- Resumo do que foi feito:
+  - Corrigido o arquivo real bot/index.js enviado pelo projeto.
+  - Adicionada a criação da instância PrismaClient antes do registro dos listeners de Hub.
+  - Mantida a API interna do bot iniciando apenas uma vez.
+  - Mantidos os intents Guilds, GuildMembers e GuildVoiceStates.
+
+- Arquivos criados/alterados:
+  - bot/index.js
+
+- Decisões tomadas:
+  - Não executar migration Prisma para corrigir o erro atual.
+  - Não alterar VoiceHubEditor.js, actions.js, api.js ou schema.prisma neste ciclo.
+  - A migration TemporaryVoiceChannel será feita somente quando a persistência das salas após reinicialização do bot for implementada.
+
+- Erros encontrados:
+  - ReferenceError: prisma is not defined.
+  - O bot encerrava logo após conectar ao Discord.
+  - A causa era a ausência de PrismaClient e da variável prisma no index.js atual.
+
+- Como foi corrigido:
+  - Importado PrismaClient de @prisma/client.
+  - Criada a constante prisma antes de registerVoiceHubHandlers(client, prisma).
+  - Removida a duplicidade de inicialização da API interna.
+
+- Estado atual do build:
+  - Após npm run dev, o bot deve conectar e permanecer online.
+  - O listener de voz deve ser registrado corretamente.
+  - A criação de salas temporárias poderá ser testada entrando no canal Hub.
+
+- Próximo passo único:
+  - Iniciar o projeto, entrar no canal Hub e validar se uma sala temporária é criada.
+
+## Entrada de Log
+- Data/hora: 2026-07-27 00:11
+- Resumo do que foi feito:
+  - Corrigida a arquitetura de inicialização da API interna do bot.
+  - A API agora inicia antes da conexão completa com o Discord.
+  - A aplicação web passou a usar 127.0.0.1 em vez de localhost para acessar a API local.
+  - Adicionado endpoint de saúde e respostas controladas quando o bot ainda não estiver pronto.
+  - Preservada a tela completa de configuração de Hub, incluindo sliders, permissões e seleção de cargos.
+
+- Arquivos criados/alterados:
+  - bot/api.js
+  - bot/index.js
+  - src/app/dashboard/servers/actions.js
+
+- Decisões tomadas:
+  - A API interna deve permanecer disponível mesmo enquanto o Discord bot está conectando.
+  - A rota /guilds retorna status 503 quando o bot ainda não está pronto, em vez de produzir falha de conexão.
+  - A aplicação web usa 127.0.0.1 para evitar conflito entre IPv4 e IPv6 no ambiente Windows.
+  - VoiceHubEditor.js não será alterado neste ciclo.
+
+- Erros encontrados:
+  - Erro "fetch failed" ao buscar os servidores pelo painel web.
+  - O painel deixou de localizar o servidor Discord associado ao Hub.
+
+- Como foi corrigido:
+  - A API foi antecipada para antes de client.login().
+  - Foi removida a inicialização duplicada no evento clientReady.
+  - Foi adicionado tratamento explícito de respostas HTTP não bem-sucedidas.
+  - Foi adicionada detecção de falha ao ocupar a porta da API.
+
+- Estado atual do build:
+  - Após npm run dev, a API deve responder em http://127.0.0.1:3001.
+  - O painel deve voltar a listar servidores e identificar o servidor do Hub.
+  - A lista de cargos deve depender somente do guildId salvo no Hub.
+
+- Próximo passo único:
+  - Confirmar no terminal a mensagem de início da API e validar a listagem do servidor e dos cargos na tela de edição do Hub.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 23:35
+- Resumo do que foi feito:
+  - Corrigida a estratégia de alteração do editor para preservar a versão completa e funcional do VoiceHubEditor.
+  - Ajustados somente os sliders de Manter ativo e Bloqueio de propriedade.
+  - Adicionada a rota da API interna para buscar cargos reais do servidor vinculado a cada Hub.
+
+- Arquivos criados/alterados:
+  - src/app/dashboard/voice-channels/[id]/VoiceHubEditor.js
+  - bot/api.js
+
+- Decisões tomadas:
+  - O arquivo grande VoiceHubEditor.js não será substituído por uma versão reduzida.
+  - Os dois sliders aceitam ∞, 0 e 1 até 10 minutos.
+  - O valor 0 representa Imediato.
+  - O valor -1 representa Nunca.
+  - A lista de cargos será carregada usando o guildId salvo no próprio VoiceHub.
+
+- Erros encontrados:
+  - A tentativa anterior reduzia indevidamente o VoiceHubEditor.js e removia recursos já implementados.
+
+- Como foi corrigido:
+  - A alteração foi limitada aos blocos específicos dos sliders.
+  - A API do bot recebeu o endpoint GET /guilds/:guildId/roles.
+
+- Estado atual do build:
+  - Após reiniciar, a página deve preservar a interface atual, apresentar os controles de tempo corretos e carregar cargos do servidor correspondente ao Hub.
+
+- Próximo passo único:
+  - Implementar no bot o evento voiceStateUpdate para criar uma sala temporária quando um membro entrar no canal Hub.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 23:59
+- Resumo do que foi feito:
+  - Implementada a base completa da interface de permissões de Hub.
+  - Adicionada busca de cargos reais do servidor Discord pela API interna do bot.
+  - Adicionados seletores pesquisáveis para cargos permitidos ou negados, cargos ignorados e cargos moderadores.
+  - Corrigida a persistência de permissionMode, listas de cargos e bitrate.
+  - Corrigidas consultas Prisma que combinavam id e userId usando findUnique.
+
+- Arquivos criados/alterados:
+  - bot/api.js
+  - src/app/dashboard/voice-channels/[id]/actions.js
+  - src/app/dashboard/voice-channels/[id]/VoiceHubEditor.js
+
+- Decisões tomadas:
+  - Categoria, canal Hub e regras por cargo funcionam como fontes de permissão distintas.
+  - Ao ativar sincronização por categoria, a sincronização pelo canal Hub é desligada automaticamente.
+  - Ao ativar sincronização pelo canal Hub, a sincronização por categoria é desligada automaticamente.
+  - As regras por cargo permanecem salvas mesmo enquanto uma sincronização estiver ativa.
+  - Cargos ignorados e moderadores permanecem configuráveis independentemente da origem das permissões.
+  - Não foi necessário alterar o schema.prisma, pois os campos necessários já existem.
+
+- Erros encontrados:
+  - permissionMode era lido de permissionModeToggle, campo inexistente no formulário.
+  - Bitrate era multiplicado por 1000 duas vezes.
+  - findUnique era usado com id e userId, combinação que não é uma chave única no schema atual.
+
+- Como foi corrigido:
+  - permissionMode agora é salvo pelo campo hidden permissionMode.
+  - bitrateKbps é salvo em kbps e convertido uma única vez para bps no servidor.
+  - Consultas de autorização usam findFirst com id e userId.
+  - API do bot ganhou endpoint de cargos por servidor.
+
+- Estado atual do build:
+  - A interface de permissões deve carregar cargos reais do Discord e persistir as seleções no banco ao salvar o Hub.
+  - As permissões ainda não são aplicadas aos canais temporários porque a lógica de criação automática no bot ainda não foi implementada.
+
+- Próximo passo único:
+  - Implementar no bot o evento voiceStateUpdate para criar canais temporários e aplicar permissionMode, permissionRoles, ignoredRoles, moderatorRoles e as sincronizações configuradas.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 23:59
+- Resumo do que foi feito: Identificada uma falha de resposta da plataforma que disparou uma ação de imagem em vez de responder ao pedido de desenvolvimento. O requisito visual da seção de permissões foi analisado com base nas referências enviadas.
+- Arquivos criados/alterados:
+  - Nenhum.
+- Decisões tomadas:
+  - Não alterar o editor sem validar sua versão atual e o schema do banco.
+  - Implementar posteriormente a seleção de cargos com persistência real, em vez de criar uma interface decorativa ou campos incompatíveis com o Prisma.
+  - Evitar conflito entre sincronização de permissões por categoria e por canal.
+- Erros encontrados:
+  - Falha de resposta: foi acionada uma geração/edição de imagem em vez de uma resposta textual.
+- Como foi corrigido:
+  - Retomado o fluxo correto de desenvolvimento com definição clara do próximo conjunto de arquivos necessário.
+- Estado atual do build:
+  - Nenhuma alteração foi feita neste ciclo. A versão funcional da página de Hub permanece preservada.
+- Próximo passo único:
+  - Receber VoiceHubEditor.js, actions.js da rota do Hub e prisma/schema.prisma para implementar a seção de permissões completa.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 23:55
+- Resumo do que foi feito: Corrigida a arquitetura da página de edição de Hub. A rota dinâmica voltou a usar um Server Component para receber o ID da URL, buscar o Hub no banco de dados e entregar os dados ao formulário interativo.
+- Arquivos criados/alterados:
+  - src/app/dashboard/voice-channels/[id]/VoiceHubEditor.js
+  - src/app/dashboard/voice-channels/[id]/page.js
+  - src/app/globals.css
+- Decisões tomadas:
+  - Separado o formulário interativo em um Client Component dedicado.
+  - Removida a estratégia incorreta de buscar o Hub pelo Client Component.
+  - O ID dinâmico agora é obtido com await params no Server Component, compatível com a versão atual do Next.js.
+  - A consulta foi alterada para findFirst com id e userId, garantindo que o Hub pertença ao usuário autenticado.
+  - Os sliders e toggles foram implementados com visual moderno sem depender de componentes externos.
+- Erros encontrados:
+  - initialHubId undefined.
+  - initialVoiceHub undefined.
+  - JSON.parse recebendo undefined.
+  - Prisma recebendo id undefined.
+- Como foi corrigido:
+  - O arquivo page.js não usa mais "use client".
+  - A lógica de autenticação, leitura de params e busca no Prisma está isolada no Server Component.
+  - O Client Component recebe voiceHub já carregado e validado.
+- Estado atual do build:
+  - A página de edição deve abrir usando o ID da URL e carregar os dados do Hub corretamente.
+- Próximo passo único:
+  - Testar abertura, salvamento e exclusão de um Hub pela interface corrigida.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 23:15
+- Resumo do que foi feito: Aprimorado o visual dos sliders com ticks e labels no componente `SliderWithTicks` e ajustado o `page.js` para usar o componente atualizado. Reforçado o diagnóstico e a solução para o erro de permissão do bot no Discord.
+- Arquivos criados/alterados: `src/components/SliderWithTicks.js`, `src/app/dashboard/voice-channels/[id]/page.js`.
+- Decisões tomadas:
+    *   O componente `SliderWithTicks` foi modificado para renderizar os ticks e labels de forma mais precisa, seguindo o visual da imagem fornecida.
+    *   Adicionado o atributo `name` ao `input type="range"` dentro de `SliderWithTicks` para que o valor seja enviado corretamente no formulário.
+    *   Reforçadas as instruções para verificar e corrigir as permissões do bot no Discord, que é a causa raiz do erro de exclusão.
+- Erros encontrados: Erro de permissão do bot ao excluir canais, Hub "não encontrado" após exclusão parcial.
+- Como foi corrigido: Ajustes no componente `SliderWithTicks` e instruções detalhadas para correção manual das permissões do bot no Discord.
+- Estado atual do build: Servidor e bot devem iniciar sem erros. A interface de edição de Hubs deve estar visualmente aprimorada. A exclusão de Hubs dependerá da correção manual das permissões do bot.
+- Próximo passo único: Implementar a lógica de criação e exclusão de canais temporários no bot, baseada nas configurações do `VoiceHub` e nos eventos `voiceStateUpdate`.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 22:45
+- Resumo do que foi feito: Criada a página de edição para um Hub de canais temporários e implementada a funcionalidade de atualização do nome do canal Hub no Discord.
+- Arquivos criados/alterados: `src/app/dashboard/voice-channels/[id]/page.js` (novo), `src/app/dashboard/voice-channels/[id]/actions.js` (novo), `src/app/dashboard/voice-channels/[id]/` (nova pasta), `bot/api.js`.
+- Decisões tomadas:
+    *   A página `/dashboard/voice-channels/[id]/page.js` foi criada para exibir um formulário com as configurações do `VoiceHub`.
+    *   A `updateVoiceHub` Server Action foi criada para persistir as alterações no banco de dados.
+    *   Uma nova rota `PATCH /guilds/:guildId/voice-channels/:channelId` foi adicionada à API do bot para permitir a atualização do nome de um canal de voz no Discord.
+    *   A `updateVoiceHub` chama essa nova rota da API do bot para sincronizar o nome do canal Hub.
+- Erros encontrados: Erro 404 ao tentar editar um Hub (resolvido pela criação da página).
+- Como foi corrigido: Criando a página de edição e a lógica de atualização.
+- Estado atual do build: Servidor e bot devem iniciar sem erros. A edição do nome do canal Hub deve funcionar, atualizando tanto no banco de dados quanto no Discord.
+- Próximo passo único: Implementar a lógica de criação e exclusão de canais temporários no bot, baseada nas configurações do `VoiceHub` e nos eventos `voiceStateUpdate`.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 22:40
+- Resumo do que foi feito: Implementada a criação do canal Hub no Discord via API do bot e vinculação do seu ID ao `VoiceHub` no banco de dados.
+- Arquivos criados/alterados: `bot/api.js`, `src/app/dashboard/voice-channels/new/actions.js`, `bot/index.js`.
+- Decisões tomadas:
+    *   Adicionado `express.json()` e uma nova rota `POST /guilds/:guildId/voice-channels` à API do bot para criar canais de voz.
+    *   A `createVoiceHub` Server Action agora chama essa API para criar o canal no Discord e usa o `channelId` e `name` retornados para o registro no Prisma.
+    *   Adicionado `GatewayIntentBits.GuildVoiceStates` e um listener `voiceStateUpdate` ao `bot/index.js` para futura implementação da lógica de canais temporários.
+- Erros encontrados: Nenhum.
+- Como foi corrigido: N/A.
+- Estado atual do build: Servidor e bot devem iniciar sem erros. A criação de um novo Hub deve resultar na criação de um canal de voz no Discord e um registro correspondente na plataforma web.
+- Próximo passo único: Criar a página de edição de um Hub (`/dashboard/voice-channels/[id]/page.js`) para configurar os detalhes do canal temporário.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 22:35
+- Resumo do que foi feito: Melhorada a aparência visual dos dropdowns e formulários, e adicionado o logo do servidor na lista de Hubs na página de canais temporários.
+- Arquivos criados/alterados: `src/app/dashboard/voice-channels/new/page.js`, `src/app/dashboard/voice-channels/page.js`.
+- Decisões tomadas:
+    *   Adicionados estilos Tailwind (`appearance-none`, `pr-10`, `relative`, SVG) ao `select` em `src/app/dashboard/voice-channels/new/page.js` para um visual mais moderno.
+    *   Em `src/app/dashboard/voice-channels/page.js`, `getGuilds` foi importado e usado para buscar informações dos servidores.
+    *   Os `voiceHubs` são agora mapeados para incluir `guildName` e `guildIcon`, que são exibidos nos cards da lista de Hubs.
+- Erros encontrados: Nenhum.
+- Como foi corrigido: N/A.
+- Estado atual do build: Servidor deve iniciar sem erros. Os formulários e a lista de Hubs devem ter uma aparência visual melhorada.
+- Próximo passo único: Implementar a lógica para criar o canal Hub no Discord e vincular seu ID ao `VoiceHub` recém-criado, e também permitir a edição das configurações do Hub.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 22:30
+- Resumo do que foi feito: Criada a página de criação de Hubs de canais temporários, incluindo a seleção do servidor Discord.
+- Arquivos criados/alterados: `src/app/dashboard/voice-channels/new/page.js` (novo), `src/app/dashboard/voice-channels/new/actions.js` (novo), `src/app/dashboard/voice-channels/new/` (nova pasta).
+- Decisões tomadas:
+    *   A página `/dashboard/voice-channels/new` agora busca a lista de guilds do bot usando `getGuilds` de `src/app/dashboard/servers/actions`.
+    *   Um formulário simples com um `select` para escolher o `guildId` foi implementado.
+    *   A `createVoiceHub` Server Action foi criada para persistir o novo `VoiceHub` no banco de dados, com valores temporários para `name` e `channelId`.
+- Erros encontrados: Nenhum.
+- Como foi corrigido: N/A.
+- Estado atual do build: Servidor deve iniciar sem erros. A página `/dashboard/voice-channels/new` deve permitir a criação de um novo `VoiceHub` vinculado a um servidor.
+- Próximo passo único: Implementar a lógica para criar o canal Hub no Discord e vincular seu ID ao `VoiceHub` recém-criado.
+
+## Entrada de Log
+- Data/hora: 2026-07-26 22:25
+- Resumo do que foi feito: Corrigido o erro `EPERM` do Prisma e confirmado que a migração `add_voice_hub_feature` foi aplicada com sucesso. Criada a página de gerenciamento de Hubs para canais temporários.
+- Arquivos criados/alterados: `src/app/dashboard/voice-channels/page.js` (novo), `src/app/dashboard/voice-channels/` (nova pasta).
+- Decisões tomadas:
+    *   Criada a página `/dashboard/voice-channels` para listar os `VoiceHubs` do usuário.
+    *   Adicionado um botão "Novo Hub" para futura criação.
+    *   Exibida uma mensagem caso não haja Hubs configurados.
+    *   Listagem básica dos Hubs existentes com link para edição.
+- Erros encontrados: `EPERM: operation not permitted` (resolvido).
+- Como foi corrigido: Parando o processo `npm dev` que estava bloqueando o arquivo.
+- Estado atual do build: Servidor deve iniciar sem erros. A página `/dashboard/voice-channels` deve exibir a interface de gerenciamento de Hubs.
+- Próximo passo único: Criar a página para adicionar/editar um novo Hub de canais temporários (`/dashboard/voice-channels/new`).
+
+## Entrada de Log
+- Data/hora: 2026-07-26 22:25
+- Resumo do que foi feito: Corrigido o erro `EPERM` do Prisma e confirmado que a migração `add_voice_hub_feature` foi aplicada com sucesso. Criada a página de gerenciamento de Hubs para canais temporários.
+- Arquivos criados/alterados: `src/app/dashboard/voice-channels/page.js` (novo), `src/app/dashboard/voice-channels/` (nova pasta).
+- Decisões tomadas:
+    *   Criada a página `/dashboard/voice-channels` para listar os `VoiceHubs` do usuário.
+    *   Adicionado um botão "Novo Hub" para futura criação.
+    *   Exibida uma mensagem caso não haja Hubs configurados.
+    *   Listagem básica dos Hubs existentes com link para edição.
+- Erros encontrados: `EPERM: operation not permitted` (resolvido).
+- Como foi corrigido: Parando o processo `npm dev` que estava bloqueando o arquivo.
+- Estado atual do build: Servidor deve iniciar sem erros. A página `/dashboard/voice-channels` deve exibir a interface de gerenciamento de Hubs.
+- Próximo passo único: Criar a página para adicionar/editar um novo Hub de canais temporários (`/dashboard/voice-channels/new`).
+
+## Entrada de Log
+- Data/hora: 2026-07-26 21:55
+- Resumo do que foi feito: Corrigido o provedor do Prisma para `postgresql` e ajustado o `DATABASE_URL` para o formato do Supabase.
+- Arquivos criados/alterados: `prisma/schema.prisma`, `.env`.
+- Decisões tomadas:
+    *   Alterado `provider = "sqlite"` para `provider = "postgresql"` no `schema.prisma`.
+    *   Confirmado o formato correto do `DATABASE_URL` para Supabase no `.env`.
+- Erros encontrados: `Error validating datasource db: the URL must start with the protocol file:`.
+- Como foi corrigido: Ajustando o provedor do Prisma e o formato da URL do banco de dados.
+- Estado atual do build: Migração do Prisma pendente de execução bem-sucedida.
+- Próximo passo único: Criar a página de gerenciamento de Hubs (`/dashboard/voice-channels`).
+
+## Entrada de Log
+- Data/hora: 2026-07-26 21:45
+- Resumo do que foi feito: Iniciada a implementação da ferramenta de canais de voz temporários. Adicionado o modelo `VoiceHub` ao `prisma/schema.prisma` e executada a migração. Adicionada a ferramenta "Canais Temporários" ao `src/lib/user-tools.js`, `src/app/dashboard/page.js` e `src/components/Sidebar.js`.
+- Arquivos criados/alterados: `prisma/schema.prisma`, `src/lib/user-tools.js`, `src/app/dashboard/page.js`, `src/components/Sidebar.js`.
+- Decisões tomadas:
+    *   Definido o esquema do `VoiceHub` com todas as configurações descritas.
+    *   Adicionada a ferramenta "voice-channels" com `key`, `name`, `description`, `icon: "Mic"`, `href` e `enabled: true`.
+    *   Importado o ícone `Mic` de `lucide-react` e adicionado ao objeto `ICONS` nos componentes `Dashboard` e `Sidebar`.
+- Erros encontrados: Nenhum.
+- Como foi corrigido: N/A.
+- Estado atual do build: Servidor deve iniciar sem erros, com o novo card e item de menu visíveis.
+- Próximo passo único: Criar a página de gerenciamento de Hubs (`/dashboard/voice-channels`).
+
+## Entrada de Log
+- Data/hora: 2026-07-26 21:38
+- Resumo do que foi feito: Refatorado o bot/index.js para organizar o código de tratamento de interações e comandos de template em arquivos separados (interactionHandler.js e templateCommands.js) e utilitários (utils.js).
+- Arquivos criados/alterados: bot/index.js (alterado), bot/interactionHandler.js (criado), bot/templateCommands.js (criado), bot/utils.js (criado).
+- Decisões tomadas:
+bot/index.js agora é responsável apenas por inicializar o cliente Discord e delegar o tratamento de interações para interactionHandler.js.
+bot/interactionHandler.js centraliza a lógica de roteamento das interações para as funções apropriadas.
+bot/templateCommands.js agrupa todas as funções relacionadas ao comando /aplicar-template.
+bot/utils.js contém funções utilitárias como baseEmbed, paginate, paginationRow e respond.
+O jobs Map foi movido para interactionHandler.js para manter o estado das operações em andamento.
+- Erros encontrados: Nenhum.
+- Como foi corrigido: N/A.
+- Estado atual do build: Servidor do bot e aplicação Next.js devem iniciar e funcionar normalmente.
+- Próximo passo único: N/A.
+
+## Entrada de Log
 - Data/hora: 26/07/2026, 20:20
 - Resumo do que foi feito: Corrigido o erro `PrismaClientValidationError: Unknown argument userId_key` no `bot/index.js`. A consulta `prisma.userTool.findUnique()` foi ajustada para usar a sintaxe correta de chave composta (`userId_key`) conforme o schema do Prisma.
 - Arquivos criados/alterados: `bot/index.js` (alterado).

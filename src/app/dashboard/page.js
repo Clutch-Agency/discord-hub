@@ -2,12 +2,13 @@ import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { getUserToolsState } from "@/lib/user-tools"
 import Link from "next/link"
-import { LayoutTemplate, Check, X, Server } from "lucide-react"
+import { LayoutTemplate, Check, X, Server, Mic } from "lucide-react" // Adicione Mic aqui
 import { toggleTool } from "@/app/dashboard/tools-actions"
 
 const ICONS = {
   LayoutTemplate: LayoutTemplate,
   Server: Server,
+  Mic: Mic, // Adicione Mic aqui
 }
 
 export default async function Dashboard() {
@@ -19,7 +20,6 @@ export default async function Dashboard() {
 
   const tools = await getUserToolsState(session.user.id)
 
-  // Filtra as ferramentas que não são "core" para exibir nos cards
   const nonCoreTools = tools.filter(tool => !tool.isCore)
 
   return (

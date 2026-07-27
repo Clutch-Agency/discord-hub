@@ -1,13 +1,12 @@
 "use server"
 
 import { auth } from "@/auth"
-import { setToolEnabled } from "@/lib/user-tools"
-import { revalidatePath } from "next/cache"
+import { redirect } from "next/navigation"
+import { setToolEnabled } from "@/lib/user-tools" // Importar setToolEnabled
 
 export async function toggleTool(toolKey, enabled) {
   const session = await auth()
-  if (!session) return
+  if (!session) redirect("/")
 
   await setToolEnabled(session.user.id, toolKey, enabled)
-  revalidatePath("/dashboard")
 }

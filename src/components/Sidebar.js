@@ -2,18 +2,18 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { LayoutTemplate, Home, Server } from "lucide-react"
+import { LayoutTemplate, Home, Server, Mic } from "lucide-react" // Adicione Mic aqui
 import { toggleTool } from "@/app/dashboard/tools-actions"
 
 const ICONS = {
   LayoutTemplate: LayoutTemplate,
   Server: Server,
+  Mic: Mic, // Adicione Mic aqui
 }
 
 export default function Sidebar({ tools }) {
   const pathname = usePathname()
 
-  // Separa as ferramentas core das outras para exibição
   const coreTools = tools.filter(tool => tool.isCore)
   const otherTools = tools.filter(tool => !tool.isCore)
 
@@ -31,7 +31,6 @@ export default function Sidebar({ tools }) {
         Home
       </Link>
 
-      {/* Exibe as ferramentas core (Servidores) */}
       {coreTools.map((tool) => {
         const Icon = ICONS[tool.icon] || LayoutTemplate
         const isActive = pathname.startsWith(tool.href)
@@ -49,9 +48,8 @@ export default function Sidebar({ tools }) {
         )
       })}
 
-      <div className="h-px bg-white/10 my-4" /> {/* Separador */}
+      <div className="h-px bg-white/10 my-4" />
 
-      {/* Exibe as outras ferramentas (Templates) */}
       <div className="flex flex-col gap-1">
         {otherTools.map((tool) => {
           const Icon = ICONS[tool.icon] || LayoutTemplate

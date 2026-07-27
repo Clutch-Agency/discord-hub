@@ -1,39 +1,69 @@
-// src/lib/user-tools.js
+import { PrismaClient } from "@prisma/client"
+import { revalidatePath } from "next/cache"
+
+const prisma = new PrismaClient()
 
 export async function getUserToolsState(userId) {
   const tools = [
     {
-      key: "servers",
-      name: "Servidores",
-      description: "Visualize e gerencie os servidores onde o bot está conectado.",
-      icon: "Server",
-      href: "/dashboard/servers",
-      enabled: true, // Servidores estão sempre ativos
-      isCore: true, // Indica que é uma função core e não uma ferramenta desativável
-    },
-    {
       key: "templates",
       name: "Templates de Servidor",
-      description: "Crie e gerencie templates para a estrutura do seu servidor Discord.",
+      description: "Crie e aplique templates de canais e cargos no seu servidor Discord.",
       icon: "LayoutTemplate",
       href: "/dashboard/templates",
-      enabled: true, // Ou baseado em alguma lógica de usuário
-      isCore: false,
+      enabled: false,
     },
-    // Adicione outras ferramentas aqui, se houver
+    {
+      key: "voice-channels",
+      name: "Canais de Voz Temporários",
+      description: "Crie canais de voz temporários que aparecem quando alguém entra e desaparecem quando todos saem.",
+      icon: "Mic", // Ícone para canais de voz
+      href: "/dashboard/voice-channels",
+      enabled: false,
+    },
   ]
 
-  // No futuro, você pode buscar o estado de 'enabled' de cada ferramenta
-  // de um banco de dados ou de alguma configuração do usuário.
-  // Por enquanto, todas as ferramentas não-core estão habilitadas por padrão.
+  const userTools = await prisma.userTool.findMany({
+    where: { userId },
+  })
 
-  return tools
+  return tools.map((tool) => {
+    const userToolState = userTools.find((ut) => ut.toolKey === tool.key)
+    return {
+      ...tool,
+      enabled: userToolState ? userToolState.enabled : false,
+    }
+  })
 }
 
-// Nova função para verificar se uma ferramenta está habilitada
-// Esta função é necessária porque 'isToolEnabled' foi removida.
 export async function isToolEnabled(userId, toolKey) {
-  const tools = await getUserToolsState(userId)
-  const tool = tools.find(t => t.key === toolKey)
-  return tool ? tool.enabled : false
+  const userTool = await prisma.userTool.findUnique({
+    where: {
+      userId_toolKey: {
+        userId,
+        toolKey,
+      },
+    },
+  })
+  return userTool ? userTool.enabled : false
+}
+
+export async function setToolEnabled(userId, toolKey, enabled) { // Exportar a função
+  await prisma.userTool.upsert({
+    where: {
+      userId_toolKey: {
+        userId,
+        toolKey,
+      },
+    },
+    update: {
+      enabled: enabled,
+    },
+    create: {
+      userId,
+      toolKey,
+      enabled,
+    },
+  })
+  revalidatePath("/dashboard")
 }
