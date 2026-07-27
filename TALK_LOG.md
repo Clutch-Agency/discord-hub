@@ -1,6 +1,38 @@
 
 
 ## Entrada de Log
+- Data/hora: 2026-07-27
+- Resumo do que foi feito:
+  - Modernizada a página inicial de login do Clutch Hub.
+  - Criado layout visual mais sofisticado, inspirado na qualidade visual da ferramenta de Canais Temporários.
+  - Adicionada estrutura de apresentação da plataforma, cards de recursos e painel de autenticação Discord.
+  - Mantida a autenticação Discord existente sem alteração de lógica.
+
+- Arquivos criados/alterados:
+  - src/app/page.js
+  - src/app/globals.css
+
+- Decisões tomadas:
+  - A modernização começou pela home de login, sem alterar Dashboard, Sidebar ou ferramentas existentes.
+  - O layout usa a identidade visual atual do projeto: fundo escuro, rosa Clutch, azul Clutch e cartões com bordas sutis.
+  - O CSS dos sliders de Canais Temporários foi preservado.
+  - Não foi necessária alteração em src/app/layout.js.
+
+- Erros encontrados:
+  - Nenhum erro novo neste ciclo.
+
+- Como foi corrigido:
+  - Não aplicável.
+
+- Estado atual do build:
+  - A home de login deve exibir o novo layout moderno.
+  - O fluxo de login com Discord deve continuar funcionando.
+  - Nenhuma alteração foi feita no banco de dados ou no bot Discord.
+
+- Próximo passo único:
+  - Modernizar o layout global do Dashboard, incluindo topo, Sidebar e área principal, para criar consistência visual em toda a plataforma.
+
+## Entrada de Log
 - Data/hora: 2026-07-27 00:35
 - Resumo do que foi feito:
   - Corrigido o arquivo real bot/index.js enviado pelo projeto.

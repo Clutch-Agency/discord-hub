@@ -3,7 +3,6 @@
 :root {
   --background: #17171a;
   --foreground: #f4f4f5;
-
   --clutch-pink: #f92c6e;
   --clutch-pink-light: #f17e9b;
   --clutch-pink-dark: #7a1734;
@@ -31,93 +30,65 @@
   --color-clutch-gray: var(--clutch-gray);
   --color-clutch-gray-light: var(--clutch-gray-light);
   --color-clutch-gray-lighter: var(--clutch-gray-lighter);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: Arial, Helvetica, sans-serif;
+  --font-mono: monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
 }
 
 body {
+  min-height: 100vh;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
 
-/* Estilos para o toggle de permissão */
-.toggle-checkbox {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
+::selection {
+  background: rgba(249, 44, 110, 0.35);
+  color: #ffffff;
 }
 
-.toggle-checkbox + .toggle-label {
-  display: block;
-  width: 40px;
-  height: 20px;
+.login-shell {
+  background:
+    radial-gradient(circle at 20% 15%, rgba(249, 44, 110, 0.1), transparent 28%),
+    radial-gradient(circle at 82% 75%, rgba(30, 187, 245, 0.09), transparent 30%),
+    linear-gradient(135deg, #151519 0%, #1b1b20 48%, #151519 100%);
+}
+
+.login-grid {
+  opacity: 0.22;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to bottom, black 0%, transparent 85%);
+}
+
+.login-orb {
+  width: 32rem;
+  height: 32rem;
   border-radius: 9999px;
-  background-color: #4b5563;
-  cursor: pointer;
-  position: relative;
-  transition: background-color 0.2s ease-in-out;
+  filter: blur(105px);
+  opacity: 0.18;
 }
 
-.toggle-checkbox + .toggle-label::before {
-  content: "";
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 9999px;
-  background-color: #ffffff;
-  transition: transform 0.2s ease-in-out;
+.login-orb-pink {
+  top: -15rem;
+  left: -13rem;
+  background: #f92c6e;
 }
 
-.toggle-checkbox:checked + .toggle-label {
-  background-color: var(--clutch-pink);
-}
-
-.toggle-checkbox:checked + .toggle-label::before {
-  transform: translateX(20px);
-}
-
-/* Estilos para o input range (slider) */
-input[type="range"] {
-  -webkit-appearance: none; /* Remove o estilo padrão do navegador */
-  appearance: none;
-  width: 100%;
-  height: 4px; /* Altura da trilha */
-  background: #4b5563; /* Cor da trilha */
-  border-radius: 2px;
-  outline: none;
-  margin: 10px 0; /* Espaçamento vertical */
-}
-
-input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--clutch-pink);
-  cursor: pointer;
-  margin-top: -6px; /* Ajusta a posição vertical do thumb */
-  box-shadow: 0 0 0 3px rgba(249, 44, 110, 0.3); /* Anel ao redor do thumb */
-  transition: background-color 0.2s ease-in-out;
-}
-
-input[type="range"]::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--clutch-pink);
-  cursor: pointer;
-  box-shadow: 0 0 0 3px rgba(249, 44, 110, 0.3);
-  transition: background-color 0.2s ease-in-out;
-}
-
-input[type="range"]::-webkit-slider-thumb:hover,
-input[type="range"]::-moz-range-thumb:hover {
-  background: var(--clutch-pink-light);
+.login-orb-blue {
+  right: -16rem;
+  bottom: -18rem;
+  background: #1ebbf5;
 }
 
 .voice-hub-range {

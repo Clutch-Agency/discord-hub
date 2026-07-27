@@ -1,8 +1,52 @@
 import { auth } from "@/auth"
 import { redirect } from "next/navigation"
+import Link from "next/link"
+import {
+  ArrowLeft,
+  ArrowRight,
+  AudioLines,
+  CheckCircle2,
+  CircleAlert,
+  Radio,
+  Server,
+  Sparkles,
+} from "lucide-react"
 import { isToolEnabled } from "@/lib/user-tools"
 import { getGuilds } from "@/app/dashboard/servers/actions"
 import { createVoiceHub } from "./actions"
+import ServerSelector from "./ServerSelector"
+
+function NoticeState({ error, title, description, children }) {
+  return (
+    <section
+      className={`rounded-3xl border p-6 sm:p-8 ${
+        error
+          ? "border-red-500/25 bg-red-500/[0.045]"
+          : "border-white/10 bg-[#1f1f23]"
+      }`}
+    >
+      <div className="flex flex-col items-center text-center">
+        <div
+          className={`flex h-14 w-14 items-center justify-center rounded-2xl ${
+            error
+              ? "bg-red-500/10 text-red-300"
+              : "bg-clutch-blue/10 text-clutch-blue"
+          }`}
+        >
+          {error ? <CircleAlert size={26} /> : <Server size={26} />}
+        </div>
+
+        <h2 className="mt-5 text-xl font-bold text-white">{title}</h2>
+
+        <p className="mt-2 max-w-lg text-sm leading-6 text-clutch-gray-lighter">
+          {description}
+        </p>
+
+        {children ? <div className="mt-6">{children}</div> : null}
+      </div>
+    </section>
+  )
+}
 
 export default async function NewVoiceHubPage() {
   const session = await auth()
@@ -21,65 +65,181 @@ export default async function NewVoiceHubPage() {
 
   if (error) {
     return (
-      <div>
-        <h2 className="text-2xl font-bold text-white mb-8">Novo Hub de Canais Temporários</h2>
-        <div className="border border-dashed border-white/10 rounded-2xl p-16 text-center">
-          <p className="text-clutch-gray-lighter">Não foi possível carregar a lista de servidores.</p>
-          <p className="text-clutch-gray-lighter mt-2">Verifique se o bot está rodando e tente novamente.</p>
-        </div>
+      <div className="mx-auto w-full max-w-4xl">
+        <Link
+          href="/dashboard/voice-channels"
+          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-clutch-gray-lighter transition-colors hover:text-white"
+        >
+          <ArrowLeft size={17} />
+          Voltar para Canais Temporários
+        </Link>
+
+        <NoticeState
+          error
+          title="Não foi possível carregar os servidores"
+          description="A plataforma não conseguiu se comunicar com o bot para buscar os servidores disponíveis."
+        >
+          <p className="text-sm text-red-100/70">
+            Verifique se o bot está online e tente atualizar a página.
+          </p>
+        </NoticeState>
       </div>
     )
   }
 
   if (guilds.length === 0) {
     return (
-      <div>
-        <h2 className="text-2xl font-bold text-white mb-8">Novo Hub de Canais Temporários</h2>
-        <div className="border border-dashed border-white/10 rounded-2xl p-16 text-center">
-          <p className="text-clutch-gray-lighter">O bot não está conectado a nenhum servidor.</p>
-          <p className="text-clutch-gray-lighter mt-2">Conecte o bot a um servidor Discord antes de criar um Hub.</p>
-        </div>
+      <div className="mx-auto w-full max-w-4xl">
+        <Link
+          href="/dashboard/voice-channels"
+          className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-clutch-gray-lighter transition-colors hover:text-white"
+        >
+          <ArrowLeft size={17} />
+          Voltar para Canais Temporários
+        </Link>
+
+        <NoticeState
+          title="Nenhum servidor disponível"
+          description="O bot ainda não está conectado a nenhum servidor Discord para que um Hub possa ser criado."
+        >
+          <Link
+            href="/dashboard/servers"
+            className="inline-flex items-center gap-2 rounded-xl bg-clutch-blue px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-clutch-blue-dark"
+          >
+            <Server size={17} />
+            Gerenciar servidores
+          </Link>
+        </NoticeState>
       </div>
     )
   }
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold text-white mb-8">Novo Hub de Canais Temporários</h2>
+    <div className="mx-auto w-full max-w-4xl">
+      <Link
+        href="/dashboard/voice-channels"
+        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-clutch-gray-lighter transition-colors hover:text-white"
+      >
+        <ArrowLeft size={17} />
+        Voltar para Canais Temporários
+      </Link>
 
-      <form action={createVoiceHub} className="bg-[#1f1f23] border border-white/10 rounded-2xl p-6">
-        <div className="mb-6">
-          <label htmlFor="guildId" className="block text-clutch-gray-lighter text-sm font-medium mb-2">
-            Selecione o Servidor Discord
-          </label>
-          <div className="relative">
-            <select
-              id="guildId"
-              name="guildId"
-              required
-              className="w-full bg-[#2a2a2e] border border-white/10 rounded-lg py-2 px-3 text-white appearance-none focus:outline-none focus:ring-2 focus:ring-clutch-pink pr-10"
-            >
-              <option value="">Selecione um servidor</option>
-              {guilds.map((guild) => (
-                <option key={guild.id} value={guild.id}>
-                  {guild.name}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-clutch-gray-lighter">
-              <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
-                <path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z" />
-              </svg>
-            </div>
+      <section className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#202025] px-6 py-8 shadow-2xl shadow-black/20 sm:px-8 sm:py-10">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-clutch-pink/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-56 w-56 rounded-full bg-clutch-blue/15 blur-3xl" />
+
+        <div className="relative">
+          <div className="inline-flex items-center gap-2 rounded-full border border-clutch-pink/25 bg-clutch-pink/10 px-3 py-1.5 text-xs font-semibold text-clutch-pink-light">
+            <Radio size={14} />
+            Novo canal Hub
+          </div>
+
+          <div className="mt-5 max-w-2xl">
+            <h1 className="text-3xl font-bold tracking-tight text-white sm:text-4xl">
+              Criar Hub de Canais Temporários
+            </h1>
+
+            <p className="mt-3 text-sm leading-6 text-clutch-gray-lighter sm:text-base">
+              Escolha o servidor onde o Hub será criado. Depois, defina o nome,
+              as permissões e o comportamento das salas temporárias.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <form
+        action={createVoiceHub}
+        className="mt-6 rounded-3xl border border-white/10 bg-[#1f1f23] p-6 sm:p-8"
+      >
+        <div className="flex items-start gap-4 border-b border-white/10 pb-6">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-clutch-pink/10 text-clutch-pink">
+            <Server size={21} />
+          </div>
+
+          <div>
+            <h2 className="text-lg font-bold text-white">
+              Servidor de destino
+            </h2>
+
+            <p className="mt-1 text-sm leading-6 text-clutch-gray-lighter">
+              O bot criará um canal de voz que será usado como ponto de entrada
+              para as salas temporárias.
+            </p>
           </div>
         </div>
 
-        <button
-          type="submit"
-          className="bg-clutch-pink hover:bg-clutch-pink-dark text-white text-sm font-medium py-2 px-4 rounded-xl transition-colors"
-        >
-          Criar Hub
-        </button>
+        <div className="mt-7">
+          <label className="mb-2 block text-sm font-semibold text-white">
+            Selecione o servidor Discord
+          </label>
+
+          <ServerSelector guilds={guilds} />
+
+          <p className="mt-3 text-sm leading-6 text-clutch-gray-lighter">
+            Apenas servidores onde o bot está conectado aparecem nesta lista.
+          </p>
+        </div>
+
+        <div className="mt-8 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-clutch-pink/10 text-clutch-pink">
+              <AudioLines size={18} />
+            </div>
+
+            <p className="mt-3 text-sm font-semibold text-white">
+              Hub criado no Discord
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-clutch-gray-lighter">
+              Um canal de voz será criado automaticamente.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-clutch-blue/10 text-clutch-blue">
+              <Sparkles size={18} />
+            </div>
+
+            <p className="mt-3 text-sm font-semibold text-white">
+              Configuração guiada
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-clutch-gray-lighter">
+              Nome, limites e permissões serão definidos em seguida.
+            </p>
+          </div>
+
+          <div className="rounded-2xl border border-white/10 bg-black/15 p-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300">
+              <CheckCircle2 size={18} />
+            </div>
+
+            <p className="mt-3 text-sm font-semibold text-white">
+              Pronto para usar
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-clutch-gray-lighter">
+              O Hub passa a criar salas quando estiver configurado.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-8 flex flex-col-reverse gap-3 border-t border-white/10 pt-6 sm:flex-row sm:items-center sm:justify-end">
+          <Link
+            href="/dashboard/voice-channels"
+            className="inline-flex items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] px-5 py-3 text-sm font-semibold text-clutch-gray-lighter transition-colors hover:bg-white/10 hover:text-white"
+          >
+            Cancelar
+          </Link>
+
+          <button
+            type="submit"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-clutch-pink px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-clutch-pink/20 transition-all hover:-translate-y-0.5 hover:bg-clutch-pink-dark"
+          >
+            Criar Hub
+            <ArrowRight size={18} />
+          </button>
+        </div>
       </form>
     </div>
   )

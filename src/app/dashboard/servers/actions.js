@@ -72,4 +72,5 @@ export async function removeGuild(guildId) {
   }
 
   revalidatePath("/dashboard/servers")
+  revalidatePath("/dashboard/voice-channels")
 }
