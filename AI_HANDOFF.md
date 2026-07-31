@@ -1,390 +1,353 @@
-# AI HANDOFF — Fase 1B: Aplicação da Segurança nas Operações Existentes
+# AI HANDOFF — Fase 3A: Produto Plug & Play
 
 ## 1. Status
 
-**Concluída em 31/07/2026.**
+**Implementação concluída em 31/07/2026, com smoke test Docker pendente por
+indisponibilidade da ferramenta no ambiente.**
 
-A fundação da Fase 1A foi aplicada à área administrativa, guilds, templates,
-toggles e CRUD de VoiceHub. IDOR, perda silenciosa de cargos, endpoints mutáveis
-sem ator e ausência de timeout foram corrigidos dentro do escopo definido.
+O projeto agora possui instalação oficial com Docker Compose, PostgreSQL local
+persistente, imagens separadas para web/bot, migrations e registro de comandos
+automáticos. Testes, lint, build standalone e validação Prisma passaram. O host
+de execução não possui o comando `docker`, portanto containers, healthchecks,
+volume e restart não foram executados e não são declarados como validados.
 
-## 2. Objetivo executado
+## 2. Objetivo entregue
 
-- bloquear o dashboard para usuários fora da allowlist;
-- filtrar guilds pelo estado atual de owner/Administrator/ManageGuild;
-- proteger remoção do bot e efeitos de VoiceHub no web e no bot;
-- derivar guild/canal de recursos persistidos;
-- corrigir o IDOR de reorder com conjunto exato e transação;
-- preservar os três arrays de cargos do Hub;
-- limitar `toolKey` ao catálogo oficial e exigir boolean real;
-- centralizar timeout/abort das chamadas privadas;
-- remover detalhes internos das respostas HTTP alteradas;
-- comprovar caminhos permitidos, negados e ausência de efeitos após negação.
+- instalação por `docker compose up -d` após preencher `.env`;
+- PostgreSQL oficial local como padrão, sem Supabase obrigatório;
+- imagens multi-stage e runtimes não-root;
+- Prisma Client gerado no build e migrations aplicadas antes da aplicação;
+- registro automático do `/aplicar-template` sem acoplar ao restart do bot;
+- comunicação web → bot pela rede Docker, sem loopback entre containers;
+- readiness, ordem de dependências, restart e shutdown previsíveis;
+- documentação de instalação, atualização, versões, backup e restore.
 
-## 3. Documentos e skills lidos
+## 3. Documentos e skill consultados
 
-Na ordem exigida:
+Foram lidos `PROJECT_DIRECTION.md`, `DECISIONS.md`, `AI_RULES.md`, `AGENTS.md`,
+`AI_CONTEXT.md`, `README.md` e `AI_HANDOFF.md`. A skill
+`.ai/skills/backend-architect/SKILL.md` foi lida integralmente.
 
-1. `PROJECT_DIRECTION.md`;
-2. `DECISIONS.md`;
-3. `AI_RULES.md`;
-4. `AGENTS.md`;
-5. `AI_CONTEXT.md`;
-6. `PROJECT_REPORT.md` integralmente, em faixas porque a primeira saída foi
-   truncada;
-7. `README.md`;
-8. `AI_HANDOFF.md` anterior.
+Como `node_modules/next/dist/docs/` está ausente, a configuração standalone foi
+confirmada na documentação oficial do Next.js 15. Tags/arquiteturas foram
+conferidas nas imagens oficiais Node/PostgreSQL e a compatibilidade PostgreSQL
+na documentação Prisma.
 
-Skill obrigatória lida integralmente:
+## 4. Auditoria de dependências externas
 
-- `.ai/skills/backend-architect/SKILL.md`.
+### Obrigatórias
 
-Todos os módulos 1A e testes relacionados foram relidos. A documentação local
-`node_modules/next/dist/docs/` está ausente. Foram consultadas as fontes oficiais
-do Next.js 15 sobre segurança de dados/Server Actions, autenticação e erros de
-renderização dinâmica. A versão instalada foi confirmada como Next 15.5.22.
+- **PostgreSQL:** persistência de Auth.js e domínio. Tornou-se container oficial
+  local no fluxo padrão.
+- **Prisma:** client, schema e migrations. Continua obrigatório nos processos
+  que acessam dados; CLI é usada pelo job de migration.
+- **Discord OAuth:** único login do painel; exige Client ID/Secret e callback.
+- **Discord Bot/Gateway/REST:** executa automações, consulta guilds e registra o
+  slash command; exige token e conectividade HTTPS/Gateway.
+- **Auth.js:** sessão persistida e proteção da identidade.
+- **API privada do bot:** necessária porque o web não possui o cliente Gateway;
+  autenticada por segredo e ator, disponível somente na rede Compose.
 
-## 4. Diagnóstico anterior
+### Opcionais
 
-- layout exigia apenas uma sessão Discord;
-- `getGuilds` retornava todo o cache do bot;
-- remoção de guild e endpoints mutáveis exigiam somente `x-bot-secret`;
-- create/update/delete de VoiceHub confiavam em IDs do fluxo web e não
-  reconfirmavam a guild;
-- o detalhe do Hub não selecionava arrays de cargos;
-- `updateChannelOrder` atualizava qualquer ID submetido;
-- `toggleTool` aceitava chave arbitrária e tipos não validados;
-- cada action fazia `fetch` direto ao bot, sem timeout;
-- endpoints retornavam `error.message` do Discord.
+- `DISCORD_BOT_INVITE_URL`: apenas exibição de convite na tela de servidores.
+- `AUTH_URL`: possui padrão localhost; torna-se necessária/explícita em acesso
+  externo ou proxy HTTPS.
+- nomes de usuário/banco, porta pública e timeout da API possuem padrões.
+- `TEST_DATABASE_URL`: somente suíte de integração descartável.
 
-## 5. Proteção global implementada
+### Alternativas, legado ou removíveis do caminho oficial
 
-`src/app/dashboard/layout.js` agora chama `requireOperator()` antes de obter e
-renderizar conteúdo administrativo. O segmento foi marcado `force-dynamic`,
-pois depende sempre de cookie/sessão e não pode ser prerenderizado.
+- **Supabase:** não aparece no código/runtime atual; existia apenas na operação
+  histórica documentada em `TALK_LOG.md`. Não é necessário. Um PostgreSQL
+  Supabase continua tecnicamente compatível via `DATABASE_URL` em execução
+  customizada fora do Compose.
+- **PM2/concurrently:** `concurrently` permanece útil nos scripts locais
+  existentes, mas não participa dos containers. PM2 não é dependência.
+- **`DATABASE_URL` manual:** continua necessária fora do Docker; no Compose é
+  construída automaticamente a partir de `POSTGRES_*`.
+- **Redis, filas, proxy, storage e serviços de log:** inexistentes e
+  desnecessários para esta fase; não foram adicionados.
+- **Uploads:** não há fluxo de upload nem arquivos persistidos pela aplicação.
+- **Logs em volume:** não há logging em arquivo; stdout/stderr do Docker é o
+  contrato atual, portanto nenhum volume de logs foi criado.
 
-As Server Actions administrativas de templates, toggles, guilds e VoiceHub
-repetem a autorização; o layout não é usado como única barreira.
+## 5. Arquitetura final do Compose
 
-## 6. Comportamento para usuário negado
+### Serviços permanentes
 
-- sem sessão: redirecionamento para `/`;
-- fora da allowlist: `notFound()` antes de renderizar o dashboard;
-- allowlist ausente/vazia/inválida: mesmo estado seguro, sem conteúdo;
-- falha da identidade: mesmo estado seguro;
-- ações diretas: `AuthorizationError` previsível antes de consultas ou efeitos.
+1. `postgres`: `postgres:17.10-alpine3.23`, healthcheck `pg_isready`, restart
+   `unless-stopped`, volume `postgres_data`.
+2. `bot`: imagem `worker`, Node 22, Gateway Discord + Express, API `3001`
+   exposta somente na rede interna, healthcheck exige segredo e `botReady`.
+3. `web`: imagem Next standalone, única porta publicada, healthcheck HTTP.
 
-Allowlist, valores configurados e detalhes internos não são serializados.
+### Jobs efêmeros
 
-## 7. Filtragem de guilds
+1. `migrate`: mesma imagem `worker`, roda
+   `node_modules/prisma/build/index.js migrate deploy` após PostgreSQL healthy.
+2. `discord-commands`: mesma imagem `worker`, registra comandos globais e sai.
 
-Fluxo atual:
+Não há imagens adicionais para os jobs porque ambos reutilizam artefatos já
+necessários ao bot. Um job de migration separado torna a exclusão mútua e o
+resultado observável, em vez de cada réplica/processo tentar migrar.
+
+## 6. Fluxo de startup e readiness
 
 ```text
-getGuilds
-→ requireOperator
-→ GET privado /guilds com x-actor-discord-id
-→ listAuthorizedGuilds no processo do bot
-→ authorizeGuildActor para cada guild do cache
-→ somente owner/Administrator/ManageGuild
+postgres inicia → pg_isready healthy
+  ├→ migrate deploy termina 0
+  └→ discord-commands chama Discord e termina 0
+       → bot inicia, conecta Gateway, /health retorna botReady=true
+          → web inicia e / responde com sucesso
 ```
 
-Existe um único request HTTP web→bot. Guild negada é omitida. Qualquer falha
-inesperada da fonte Discord faz a lista inteira falhar de forma segura; não há
-retorno parcial ambíguo nem cache novo.
+`depends_on` usa `service_healthy` e `service_completed_successfully`, evitando
+`sleep` e corrida por tempo. Falhas de banco, migration ou Discord impedem os
+dependentes de aparentarem sucesso.
 
-## 8. Proteção de remoção do bot
+## 7. Fluxo do Prisma/PostgreSQL
 
-`removeGuild` exige operador, valida snowflake, chama
-`requireGuildAuthorization()` e envia o contexto autorizado ao cliente privado.
-`DELETE /guilds/:guildId` exige segredo + ator e repete `authorizeGuildActor()`
-antes de `guild.leave()`. Guild ausente, ator ausente, ID inválido, permissão
-revogada ou Discord indisponível não executam `leave()`.
+- `npm ci` usa `package-lock.json` em build reproduzível;
+- `prisma generate` roda no prebuild web e no estágio de dependências do worker;
+- nenhuma geração é necessária no host ou em volume mutável;
+- `migrate deploy` usa somente migrations versionadas existentes;
+- schema, models e migrations não foram modificados;
+- web/bot só iniciam após o job de migration terminar com sucesso.
 
-A limpeza de configurações da guild continua fora do escopo e deve ser tratada
-na fase de consistência/reconciliação.
+`scripts/container-entrypoint.mjs` recebe `POSTGRES_HOST`, porta, database,
+usuário e senha; valida nomes/porta e usa `URL` para percent-encode da senha.
+Produz `DATABASE_URL` com schema `public`, `sslmode=disable` na rede local e
+timeout de conexão de 10 s. Se uma `DATABASE_URL` já existir em execução
+customizada, ela é preservada.
 
-## 9. Proteção de criação de Hub
+## 8. Comunicação web/bot
 
-`createVoiceHubForOperator()` executa operador → guild válida → autorização web
-→ POST privado autorizado → persistência com `actor.userId` e guild confirmada.
-O endpoint repete a autorização antes de criar o canal. Nenhum ator é aceito do
-formulário.
+Antes, cliente e servidor usavam `127.0.0.1`, válido somente em processo/host
+compartilhado. Agora:
 
-Falha Prisma posterior à criação Discord ainda pode deixar canal órfão; a
-compensação completa foi explicitamente adiada pelo escopo.
+- bot escuta `BOT_API_BIND_HOST` (padrão local `127.0.0.1`; Compose `0.0.0.0`);
+- web aceita `BOT_API_URL`, validada como origem HTTP/HTTPS sem credenciais,
+  path, query ou fragmento;
+- Compose fixa `BOT_API_URL=http://bot:3001`;
+- a porta é apenas `expose`, nunca `ports`;
+- `BOT_API_SECRET` e ator Discord permanecem obrigatórios nas requisições.
 
-## 10. Proteção de edição de Hub
+## 9. Shutdown e restart
 
-Leitura e edição usam `getAuthorizedVoiceHub()`:
+Web/bot/postgres usam `restart: unless-stopped`. Web e bot têm `init: true` e
+grace period de 20 s. O entrypoint encaminha SIGINT/SIGTERM ao processo filho.
+O bot agora destrói o client Discord, fecha conexões HTTP (inclusive idle) e
+desconecta o Prisma antes de sair. Jobs usam `restart: "no"`.
 
-1. exige operador;
-2. valida o ID interno;
-3. busca `id + actor.userId`;
-4. deriva `guildId` do registro;
-5. autoriza a guild;
-6. passa somente a projeção necessária ao editor.
+## 10. Persistência
 
-`getGuildRoles` agora recebe o ID do Hub, repete esse fluxo e não aceita mais
-uma `guildId` arbitrária do navegador.
+- volume nomeado: `postgres_data:/var/lib/postgresql/data`;
+- caminho segue a regra da imagem oficial para PostgreSQL 17 e anteriores;
+- `docker compose down` preserva dados;
+- `docker compose down -v` é destrutivo e está advertido no README;
+- não existem uploads/cache/logs persistentes que justifiquem outros volumes.
 
-## 11. Proteção de exclusão de Hub
+## 11. Variáveis
 
-Delete busca o Hub por owner, deriva guild/canal do banco, autoriza a guild,
-chama o endpoint protegido e só depois executa `deleteMany(id + userId)`. Canal
-já ausente é tratado como estado removível; guild/ator negados não permitem
-apagar o registro.
+### Obrigatórias no Docker
 
-## 12. Endpoints mutáveis protegidos
+- `POSTGRES_PASSWORD`;
+- `DISCORD_BOT_TOKEN`;
+- `DISCORD_CLIENT_ID`;
+- `DISCORD_CLIENT_SECRET`;
+- `AUTH_SECRET`;
+- `ALLOWED_DISCORD_USER_IDS`;
+- `BOT_API_SECRET`.
 
-Rotas auditadas:
+Compose usa interpolação `${VAR:?mensagem}` e falha antes de iniciar quando uma
+dessas variáveis está ausente/vazia.
 
-- `POST /guilds/:guildId/voice-channels`;
-- `PATCH /guilds/:guildId/voice-channels/:channelId`;
-- `DELETE /guilds/:guildId/voice-channels/:channelId`;
-- `DELETE /guilds/:guildId`.
+### Opcionais no Docker
 
-Todas exigem segredo e ator, validam IDs, repetem owner/Administrator/ManageGuild
-e só então executam o efeito. PATCH/DELETE buscam o canal pela coleção da guild
-autorizada e exigem `ChannelType.GuildVoice`, impedindo canal externo ou tipo
-incompatível.
+- `POSTGRES_DB=clutch_hub`;
+- `POSTGRES_USER=clutch_hub`;
+- `WEB_PORT=3000`;
+- `AUTH_URL=http://localhost:3000`;
+- `DISCORD_BOT_INVITE_URL` vazio;
+- `BOT_API_TIMEOUT_MS=5000`.
 
-## 13. Correção do IDOR
+### Desenvolvimento/teste/internas
 
-`reorderTemplateChannels()`:
+- `DATABASE_URL`, `TEST_DATABASE_URL`;
+- `BOT_API_URL`, `BOT_API_BIND_HOST`, `BOT_API_PORT`;
+- `AUTH_TRUST_HOST=true` é definido internamente pelo Compose.
 
-- exige operador e template de `actor.userId`;
-- valida IDs e duplicatas;
-- carrega no servidor o conjunto esperado;
-- exige igualdade exata, sem omissões ou extras;
-- ignora qualquer `order` enviado e usa a posição do array;
-- atualiza cada canal com `id + templateId`;
-- usa transação interativa e falha se uma atualização não afetar exatamente um
-  registro.
+Nenhum valor secreto foi incluído em arquivos versionados.
 
-Recurso alheio/inexistente não é consultado separadamente nem enumerado.
+## 12. Compatibilidade
 
-## 14. Correção dos arrays de cargos
+Node 22.23.1 bookworm-slim e PostgreSQL 17.10 Alpine oficiais publicam amd64 e
+arm64. O Compose usa recursos padrão V2, bridge network, named volume,
+healthchecks e dependências condicionais. O desenho é apropriado para Docker
+Desktop, Docker Engine em Ubuntu/Debian e painéis que importam Compose como
+Umbrel, Dockge, Portainer e EasyPanel. Essas plataformas não foram executadas
+neste ambiente.
 
-A projeção `VOICE_HUB_SELECT` inclui:
+Não foi especificado `platform`, para permitir seleção nativa da arquitetura.
+PostgreSQL e API do bot não publicam portas. O stack precisa de saída à internet
+para pull/npm no build e para Discord em runtime.
 
-- `permissionRoles`;
-- `ignoredRoles`;
-- `moderatorRoles`.
+## 13. Instalação, atualização e versões
 
-Cada `RoleSelector` envia um marcador `<field>Present`. Com marcador e nenhum
-ID, `[]` é uma limpeza intencional; sem marcador, o campo é omitido do update e
-o valor atual é preservado. Abrir/salvar sem mudança mantém os valores.
+Primeira instalação:
 
-## 15. Validação de `toolKey`
+```text
+git clone → copiar .env.example para .env → preencher → docker compose up -d
+```
 
-`USER_TOOLS` é o catálogo único. `validateToolToggle()` aceita somente
-`templates` e `voice-channels` e exige `typeof enabled === "boolean"`.
-`toggleToolForOperator()` deriva o usuário de `requireOperator()` antes do
-upsert. Chaves desconhecidas não criam `UserTool` arbitrário.
+Atualização:
 
-## 16. Timeout do cliente interno
+```text
+backup → git pull --ff-only → docker compose up -d --build → compose ps/logs
+```
 
-`src/lib/discord/bot-api-client.js` centraliza configuração, headers, request,
-abort e conversão de falhas. O default é 5000 ms. `BOT_API_TIMEOUT_MS` é
-opcional e aceita inteiro entre 100 e 30000 ms. `AbortController` encerra a
-chamada e o timer é limpo em `finally`.
+Versão fixa: checkout de tag/commit e rebuild. Downgrade após migrations não é
+garantido e deve usar backup compatível.
 
-Não há retry automático, sobretudo nas operações mutáveis.
+## 14. Backup e restore
 
-## 17. Estratégia de erros públicos
+README documenta `pg_dump --format=custom` via `docker compose exec -T postgres`
+e `pg_restore --clean --if-exists --no-owner`. O dump fica no host, fora do
+volume. Web/bot devem ser parados em restauração planejada. Não foi executado
+por falta de Docker/PostgreSQL neste ambiente.
 
-- 400: entrada/autorização inválida;
-- 401: segredo incorreto;
-- 403: acesso à guild negado;
-- 404: canal compatível não encontrado;
-- 503: autorização/Discord indisponível ou efeito externo falhou.
+## 15. Arquivos criados na Fase 3A
 
-Endpoints alterados não retornam stack, objeto Discord, URL interna nem
-`error.message`. Logs usam mensagens fixas e não incluem segredo, token ou
-payload privado. O web converte falhas retornadas em códigos/mensagens públicas
-de `AuthorizationError` quando necessário.
+- `.dockerignore`;
+- `Dockerfile`;
+- `compose.yaml`;
+- `scripts/container-entrypoint.mjs`.
 
-## 18. Arquivos criados
-
-- `src/lib/discord/guild-operations.js`;
-- `src/lib/discord/guild-operations.test.js`;
-- `src/lib/discord/bot-api-client.test.js`;
-- `src/lib/templates/channel-order.js`;
-- `src/lib/templates/channel-order.test.js`;
-- `src/lib/voice-hubs/voice-hub-operations.js`;
-- `src/lib/voice-hubs/voice-hub-operations.test.js`;
-- `src/lib/voice-hubs/voice-hub-service.js`;
-- `src/lib/voice-hubs/voice-hub-service.test.js`;
-- `src/lib/user-tools.test.js`.
-
-## 19. Arquivos modificados
+## 16. Arquivos alterados na Fase 3A
 
 - `.env.example`;
-- `bot/api.js`, `bot/api.test.mjs`;
-- `bot/guild-authorization.js`, `bot/guild-authorization.test.mjs`;
-- `src/app/dashboard/layout.js`;
-- `src/app/dashboard/actions.js`;
-- `src/app/dashboard/servers/actions.js`;
-- `src/app/dashboard/tools-actions.js`;
-- `src/app/dashboard/templates/[id]/actions.js`;
-- páginas/actions/editor/fetch do domínio `voice-channels`;
-- `src/lib/discord/bot-api-client.js`;
-- `src/lib/user-tools.js`;
-- `AI_CONTEXT.md`, `DECISIONS.md` e este `AI_HANDOFF.md`.
+- `next.config.mjs`;
+- `bot/api.js`;
+- `bot/index.js`;
+- `bot/deploy-commands.js`;
+- `src/lib/discord/bot-api-client.js` e teste;
+- `README.md`;
+- `AI_CONTEXT.md`;
+- `DECISIONS.md` (ADR-024);
+- `AI_HANDOFF.md`.
 
-`AGENTS.md`, `AI_RULES.md`, `README.md` e `PROJECT_REPORT.md` não foram
-alterados. Não surgiu contradição operacional que justificasse mudar as regras.
+O worktree já continha mudanças não commitadas da Fase 2A. Elas foram
+preservadas; esta lista diferencia as alterações de 3A.
 
-## 20. Testes adicionados
+## 17. Testes e resultados executados
 
-Cobertura nova/expandida:
-
-- listagem filtrada e fail-safe de guilds;
-- remoção autorizada, ausente, inválida e negada;
-- POST/PATCH/DELETE de voz e tipo incompatível;
-- ausência de efeitos após negação;
-- create/read/update/delete/roles de VoiceHub por owner/guild;
-- IDs manipulados e recurso alheio;
-- preservação/limpeza/ausência de arrays;
-- projeção dos arrays para o editor;
-- reorder válido, externo, duplicado, omitido, extra e inexistente;
-- tool keys e tipos;
-- configuração de timeout, caminho normal, abort e ausência de retry;
-- redaction de falhas externas.
-
-## 21. Resultado dos testes
-
-Última execução sobre o código final:
+### Unitários/HTTP
 
 ```text
 npm test
-16 arquivos aprovados
-104 testes aprovados
-0 falhas e 0 erros não tratados
+23 arquivos passed, 1 skipped
+163 testes passed, 1 skipped
 ```
 
-Os testes usam objetos controlados e Express real em porta efêmera local. Não
-acessam Discord, OAuth ou PostgreSQL reais.
+O skipped é a integração PostgreSQL protegida por `TEST_DATABASE_URL`, ausente.
+Foi adicionado teste de `BOT_API_URL` interna e rejeição de URL ambígua.
 
-## 22. Resultado do lint
+### Lint
 
 ```text
 npm run lint
-0 erros
-7 warnings
+0 erros, 7 warnings preexistentes de @next/next/no-img-element
 ```
 
-Os sete warnings preexistentes são `@next/next/no-img-element` e permanecem fora
-do escopo visual da fase.
-
-## 23. Resultado do build
+### Build
 
 ```text
 npm run build
-Prisma Client 6.19.3 gerado
-Next.js 15.5.22 compilado
-10 rotas processadas
-build concluído com sucesso
+Next.js 15.5.22: compilação, 10 rotas e output standalone concluídos
 ```
 
-O primeiro build intermediário identificou que o dashboard autenticado precisava
-ser explicitamente dinâmico; após `dynamic = "force-dynamic"`, duas execuções
-subsequentes passaram. O build final manteve apenas os sete warnings antigos.
+Foram confirmados `.next/standalone/server.js` e o Prisma Client rastreado no
+output standalone.
 
-## 24. Resultado do Prisma
+### Prisma
 
 ```text
 npx prisma validate
 schema válido
 ```
 
-O `prebuild` também executou `prisma generate` com sucesso.
+### Checks adicionais
 
-## 25. Dependências
+- `node --check` passou em bot, API, deploy de comandos e entrypoint;
+- `compose.yaml` foi carregado por parser YAML local e sua estrutura de cinco
+  serviços, dois targets e volume nomeado foi confirmada;
+- construção de URL com senha contendo caracteres especiais foi exercitada
+  localmente pelo entrypoint;
+- `git diff --check` passou, apenas com avisos de conversão LF/CRLF;
+- schema e diretório de migrations permanecem sem alteração desta fase.
 
-Nenhuma dependência foi adicionada, removida ou atualizada.
+## 18. Testes Docker não executados
 
-- `package.json`: sem alteração;
-- `package-lock.json`: sem alteração.
+Os comandos `docker version` e `docker compose version` falharam porque
+`docker` não é reconhecido neste host. Consequentemente, não foram executados:
 
-Timeout usa `AbortController` nativo do Node atual.
+- `docker compose config` oficial;
+- build real do Dockerfile;
+- pull das imagens base;
+- startup e healthchecks dos cinco serviços;
+- conexão Prisma dentro da rede;
+- registro real no Discord;
+- persistência após restart/recreate;
+- backup/restore;
+- smoke amd64/arm64 e painéis de hospedagem.
 
-## 26. Confirmação de ausência de migrations
+Essa é a principal validação pendente antes de considerar o empacotamento
+operacionalmente comprovado.
 
-- `prisma/schema.prisma`: sem alteração;
-- `prisma/migrations/`: sem alteração;
-- migration criada: nenhuma;
-- migration executada: nenhuma.
+## 19. Como executar o smoke test pendente
 
-## 27. Mudanças funcionais perceptíveis
+Em host Docker com credenciais de aplicação de teste:
 
-- conta autenticada fora da allowlist deixa de abrir o dashboard;
-- lista de servidores pode ficar menor porque mostra apenas guilds administradas;
-- ações perdem acesso imediatamente se permissões Discord forem revogadas;
-- Hubs de guild não autorizada deixam de aparecer/abrir;
-- salvar o editor não apaga mais cargos ausentes acidentalmente;
-- requests privados podem falhar após 5 s por padrão, em vez de ficar pendurados;
-- erros do bot ficam genéricos e seguros para o consumidor.
+1. copiar `.env.example` para `.env` e preencher segredos/IDs;
+2. `docker compose config` e confirmar apenas uma porta publicada;
+3. `docker compose build --no-cache`;
+4. `docker compose up -d` e acompanhar `docker compose ps -a`/logs;
+5. confirmar `migrate` e `discord-commands` exited 0;
+6. confirmar `postgres`, `bot`, `web` healthy e login OAuth;
+7. executar uma leitura/CRUD e `/aplicar-template` em guild de teste;
+8. reiniciar web/bot/postgres e confirmar dados preservados;
+9. realizar dump, restaurar em stack descartável e validar os dados;
+10. repetir em arm64 quando disponível.
 
-Não houve redesign nem nova funcionalidade de produto.
+## 20. Limitações e riscos restantes
 
-## 28. Riscos restantes
+- estado de jobs/salas em RAM e ausência de reconciliação pós-restart;
+- ausência de compensação transacional Discord/PostgreSQL;
+- registro global pode levar tempo para propagar e falha bloqueia o bot;
+- segredos estão em environment do Compose, adequados ao escopo atual, mas não
+  usam Docker Secrets;
+- imagens são fixadas por versão, não digest; exigem atualização periódica;
+- nenhum E2E real de OAuth/Discord/Docker;
+- múltiplos PrismaClient e observabilidade limitada permanecem;
+- compatibilidade com painéis foi projetada, não empiricamente certificada.
 
-- criação Discord seguida de falha Prisma ainda pode deixar canal órfão;
-- exclusão Discord seguida de falha Prisma ainda pode deixar divergência;
-- salas temporárias e timers continuam em memória;
-- não há teste com OAuth, banco ou Discord reais;
-- não há rate limiting ou observabilidade estruturada;
-- `ownershipLockMinutes` continua sem efeito;
-- workflows de template continuam sem TTL/paginação completa;
-- validação integral de todos os campos ainda não foi feita;
-- README/instalação continuam desatualizados.
+## 21. Próximas fases recomendadas
 
-## 29. Operações ainda não migradas
+1. smoke Docker real e correções exclusivamente operacionais encontradas;
+2. Fase 2B de idempotência/compensação Discord ↔ PostgreSQL;
+3. persistência/reconciliação de `TemporaryVoiceChannel`;
+4. integração PostgreSQL e build Compose em CI;
+5. centralização Prisma, logs e readiness mais aprofundada;
+6. somente depois novas ferramentas ou serviços de infraestrutura.
 
-- comando slash e eventos Discord não usam a allowlist do painel; mantêm o
-  modelo próprio `Account + UserTool + permissões do contexto Discord`;
-- engine de salas não persiste `TemporaryVoiceChannel`;
-- fluxos Discord+banco não possuem reconciliação/compensação completa;
-- validação ampla de nomes, enums e limites dos templates permanece parcial;
-- código legado fora dos fluxos migrados ainda cria `PrismaClient` diretamente.
+## 22. Resumo executivo
 
-As operações administrativas web de templates, toggles, guilds e VoiceHub
-agora exigem operador. Logout permanece naturalmente disponível a qualquer
-sessão.
-
-## 30. Recomendações para a Fase 2
-
-1. ampliar validação de domínio e contratos de retorno das Server Actions;
-2. definir limites/enum de templates e configuração completa de Hub;
-3. padronizar tratamento de conflitos Prisma/Discord sem expor detalhes;
-4. adicionar testes de integração com banco descartável;
-5. planejar compensação simples e idempotência antes de retries;
-6. depois integrar `TemporaryVoiceChannel` e reconciliação de startup;
-7. manter Docker/empacotamento para a fase prevista, sem antecipar infraestrutura.
-
-## 31. Arquivos prioritários para revisão
-
-- `src/lib/voice-hubs/voice-hub-operations.js`;
-- `src/lib/voice-hubs/voice-hub-service.js`;
-- `src/lib/discord/bot-api-client.js`;
-- `src/lib/discord/guild-operations.js`;
-- `src/lib/templates/channel-order.js`;
-- `bot/guild-authorization.js`;
-- `bot/api.js`;
-- `src/app/dashboard/layout.js`;
-- `src/app/dashboard/voice-channels/[id]/actions.js`;
-- `src/app/dashboard/templates/[id]/actions.js`.
-
-## 32. Resumo executivo
-
-A Fase 1B fecha as vulnerabilidades críticas identificadas para a superfície
-administrativa atual: allowlist é global e repetida em actions, guilds são
-isoladas pela permissão Discord atual, efeitos mutáveis têm defesa em
-profundidade, VoiceHub deriva escopo do banco, reorder não atravessa templates e
-arrays não são apagados por ausência. O cliente privado agora falha em tempo
-finito e não repete mutações. A suíte passou de 47 para 104 testes sem novas
-dependências, schema ou migrations. O próximo risco estrutural prioritário é
-consistência/persistência entre Discord e PostgreSQL, precedido pela validação
-de domínio planejada para a Fase 2.
+A Fase 3A remove do fluxo oficial a dependência de infraestrutura externa e de
+ferramentas instaladas no host. O stack codifica banco, migrations, registro de
+comandos, bot e web com ordem explícita; preserva dados em volume; publica só o
+painel; corrige a comunicação loopback incompatível com containers e adiciona
+shutdown coordenado. O código local está verde, mas a ausência de Docker impede
+afirmar que imagens e runtime completo já foram exercitados. O próximo passo
+obrigatório é o smoke test descrito acima, antes de avançar a evolução de
+consistência do domínio.

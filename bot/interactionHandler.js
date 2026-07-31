@@ -1,266 +1,414 @@
 const { PrismaClient } = require("@prisma/client")
-const { showTemplateMenu, showCategoryMenu, showRoleMenu, applyTemplate, processNextPrivateChannel, createPendingPrivateChannel } = require("./templateCommands") // Novo arquivo para comandos de template
-const { baseEmbed, respond } = require("./utils") // Novo arquivo para utilitários
+const { ChannelType } = require("discord.js")
+const {
+  showTemplateMenu,
+  showCategoryMenu,
+  showRoleMenu,
+  applyTemplate,
+  createPendingPrivateChannel,
+} = require("./templateCommands")
+const { baseEmbed } = require("./utils")
+const {
+  WorkflowValidationError,
+  getValidatedJob,
+  validateModalName,
+  validateRoleSelection,
+  validateSingleSelection,
+} = require("./template-workflow-validation")
 
 const prisma = new PrismaClient()
-const jobs = new Map() // Mantenha o Map de jobs aqui ou em um módulo de estado
+const jobs = new Map()
 
-async function handleInteraction(interaction, client) {
-  try {
-    if (interaction.isChatInputCommand() && interaction.commandName === "aplicar-template") {
-      if (!interaction.inGuild()) {
-        await interaction.reply({
-          embeds: [baseEmbed("Comando indisponível", "Esse comando só funciona dentro de um servidor.")],
-          ephemeral: true,
-        })
-        return
-      }
+async function replyWithWorkflowError(interaction, error) {
+  if (!interaction.isRepliable()) {
+    return
+  }
 
-      const account = await prisma.account.findFirst({
-        where: { provider: "discord", providerAccountId: interaction.user.id },
-        include: { user: true },
-      })
+  const content =
+    error instanceof WorkflowValidationError
+      ? error.publicMessage
+      : "Ocorreu um erro inesperado. Execute o comando novamente."
+  const payload = { content, ephemeral: true }
 
-      if (!account) {
-        await interaction.reply({
-          embeds: [baseEmbed("Conta não vinculada", "Faça login na plataforma web com este mesmo usuário do Discord antes de usar esse comando.")],
-          ephemeral: true,
-        })
-        return
-      }
+  if (interaction.replied || interaction.deferred) {
+    await Promise.resolve(interaction.followUp?.(payload)).catch(() => {})
+    return
+  }
 
-      const userTool = await prisma.userTool.findUnique({
-        where: {
-          userId_toolKey: {
-            userId: account.userId,
-            toolKey: 'templates',
+  await Promise.resolve(interaction.reply(payload)).catch(() => {})
+}
+
+function createInteractionHandler(dependencies = {}) {
+  const database = dependencies.prisma || prisma
+  const workflowJobs = dependencies.jobs || jobs
+  const commands = dependencies.commands || {
+    showTemplateMenu,
+    showCategoryMenu,
+    showRoleMenu,
+    applyTemplate,
+    createPendingPrivateChannel,
+  }
+
+  return async function handleInteraction(interaction) {
+    try {
+      if (
+        interaction.isChatInputCommand() &&
+        interaction.commandName === "aplicar-template"
+      ) {
+        if (!interaction.inGuild()) {
+          await interaction.reply({
+            embeds: [
+              baseEmbed(
+                "Comando indisponível",
+                "Esse comando só funciona dentro de um servidor."
+              ),
+            ],
+            ephemeral: true,
+          })
+          return
+        }
+
+        const account = await database.account.findFirst({
+          where: {
+            provider: "discord",
+            providerAccountId: interaction.user.id,
           },
-        },
-      });
+          include: { user: true },
+        })
 
-      if (!userTool || !userTool.enabled) {
+        if (!account) {
+          await interaction.reply({
+            embeds: [
+              baseEmbed(
+                "Conta não vinculada",
+                "Faça login na plataforma web com este mesmo usuário do Discord antes de usar esse comando."
+              ),
+            ],
+            ephemeral: true,
+          })
+          return
+        }
+
+        const userTool = await database.userTool.findUnique({
+          where: {
+            userId_toolKey: {
+              userId: account.userId,
+              toolKey: "templates",
+            },
+          },
+        })
+
+        if (!userTool?.enabled) {
+          await interaction.reply({
+            content:
+              "A ferramenta de templates não está ativada para sua conta. Ative-a no painel web.",
+            ephemeral: true,
+          })
+          return
+        }
+
+        await commands.showTemplateMenu(
+          interaction,
+          account.userId,
+          workflowJobs
+        )
+        return
+      }
+
+      if (
+        interaction.isStringSelectMenu() &&
+        interaction.customId.startsWith("pick-template-")
+      ) {
+        const jobId = interaction.customId.slice("pick-template-".length)
+        const job = getValidatedJob(interaction, workflowJobs, jobId, {
+          requiredFields: ["userId"],
+        })
+        const templateId = validateSingleSelection(interaction.values, {
+          internalId: true,
+        })
+        const template = await database.template.findFirst({
+          where: { id: templateId, userId: job.userId },
+          select: { id: true, name: true },
+        })
+
+        if (!template) {
+          throw new WorkflowValidationError(
+            "O template selecionado não pertence mais a esta conta."
+          )
+        }
+
+        job.templateId = template.id
+        job.templateName = validateModalName(template.name, "O nome do template")
+        workflowJobs.set(jobId, job)
+        await commands.showCategoryMenu(interaction, job, workflowJobs)
+        return
+      }
+
+      if (
+        interaction.isStringSelectMenu() &&
+        interaction.customId.startsWith("pick-category-")
+      ) {
+        const jobId = interaction.customId.slice("pick-category-".length)
+        const job = getValidatedJob(interaction, workflowJobs, jobId, {
+          requiredFields: ["templateId", "templateName"],
+        })
+        const choice = validateSingleSelection(interaction.values, {
+          allowNewValue: "new-category",
+        })
+
+        if (choice === "new-category") {
+          const {
+            ModalBuilder,
+            TextInputBuilder,
+            TextInputStyle,
+            ActionRowBuilder,
+          } = require("discord.js")
+          const modal = new ModalBuilder()
+            .setCustomId(`modal-category-${jobId}`)
+            .setTitle("Nova categoria")
+          const input = new TextInputBuilder()
+            .setCustomId("category-name")
+            .setLabel("Nome da categoria")
+            .setStyle(TextInputStyle.Short)
+            .setMinLength(1)
+            .setMaxLength(100)
+            .setRequired(true)
+
+          modal.addComponents(new ActionRowBuilder().addComponents(input))
+          await interaction.showModal(modal)
+          return
+        }
+
+        const category = await interaction.guild.channels.fetch(choice)
+
+        if (!category || category.type !== ChannelType.GuildCategory) {
+          throw new WorkflowValidationError(
+            "A categoria selecionada não pertence a este servidor."
+          )
+        }
+
+        job.categoryId = category.id
+        job.categoryName = validateModalName(category.name, "O nome da categoria")
+        job.categoryIsPrivate = false
+        workflowJobs.set(jobId, job)
+        await commands.applyTemplate(interaction, job, workflowJobs)
+        return
+      }
+
+      for (const direction of ["prev", "next"]) {
+        const prefix = `cat-${direction}-`
+
+        if (interaction.isButton() && interaction.customId.startsWith(prefix)) {
+          const jobId = interaction.customId.slice(prefix.length)
+          const job = getValidatedJob(interaction, workflowJobs, jobId, {
+            requiredFields: ["templateId", "categoryPage"],
+          })
+          const page = job.categoryPage + (direction === "next" ? 1 : -1)
+
+          if (!Number.isInteger(page) || page < 0) {
+            throw new WorkflowValidationError()
+          }
+
+          await commands.showCategoryMenu(interaction, job, workflowJobs, page)
+          return
+        }
+      }
+
+      if (
+        interaction.isModalSubmit() &&
+        interaction.customId.startsWith("modal-category-")
+      ) {
+        const jobId = interaction.customId.slice("modal-category-".length)
+        const job = getValidatedJob(interaction, workflowJobs, jobId, {
+          requiredFields: ["templateId", "templateName"],
+        })
+
+        job.categoryId = "new-category"
+        job.categoryName = validateModalName(
+          interaction.fields.getTextInputValue("category-name"),
+          "O nome da categoria"
+        )
+        workflowJobs.set(jobId, job)
+
+        const { ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js")
+        const yesButton = new ButtonBuilder()
+          .setCustomId(`cat-private-yes-${jobId}`)
+          .setLabel("Privada")
+          .setStyle(ButtonStyle.Danger)
+        const noButton = new ButtonBuilder()
+          .setCustomId(`cat-private-no-${jobId}`)
+          .setLabel("Pública")
+          .setStyle(ButtonStyle.Secondary)
+
         await interaction.reply({
-          content: 'A ferramenta de templates não está ativada para sua conta. Ative-a no painel web.',
+          embeds: [
+            baseEmbed(
+              "Visibilidade da categoria",
+              `A categoria **${job.categoryName}** deve ser privada ou pública?`
+            ),
+          ],
+          components: [new ActionRowBuilder().addComponents(noButton, yesButton)],
           ephemeral: true,
-        });
-        return;
-      }
-
-      await showTemplateMenu(interaction, account.userId, jobs)
-      return
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith("pick-template-")) {
-      const jobId = interaction.customId.replace("pick-template-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-
-      const template = await prisma.template.findUnique({ where: { id: interaction.values[0] } })
-      job.templateId = template.id
-      job.templateName = template.name
-      jobs.set(jobId, job)
-
-      await showCategoryMenu(interaction, job, jobs)
-      return
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith("pick-category-")) {
-      const jobId = interaction.customId.replace("pick-category-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-
-      const choice = interaction.values[0]
-
-      if (choice === "new-category") {
-        const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js")
-        const modal = new ModalBuilder()
-          .setCustomId(`modal-category-${jobId}`)
-          .setTitle("Nova categoria")
-
-        const input = new TextInputBuilder()
-          .setCustomId("category-name")
-          .setLabel("Nome da categoria")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-
-        modal.addComponents(new ActionRowBuilder().addComponents(input))
-        await interaction.showModal(modal)
+        })
         return
       }
 
-      const category = await interaction.guild.channels.fetch(choice)
-      job.categoryId = category.id
-      job.categoryName = category.name
-      job.categoryIsPrivate = false
-      jobs.set(jobId, job)
+      for (const privacy of ["no", "yes"]) {
+        const prefix = `cat-private-${privacy}-`
 
-      await applyTemplate(interaction, job, jobs)
-      return
-    }
+        if (interaction.isButton() && interaction.customId.startsWith(prefix)) {
+          const jobId = interaction.customId.slice(prefix.length)
+          const job = getValidatedJob(interaction, workflowJobs, jobId, {
+            requiredFields: ["templateId", "categoryId", "categoryName"],
+          })
 
-    if (interaction.isButton() && interaction.customId.startsWith("cat-prev-")) {
-      const jobId = interaction.customId.replace("cat-prev-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-      await showCategoryMenu(interaction, job, jobs, job.categoryPage - 1)
-      return
-    }
+          job.categoryIsPrivate = privacy === "yes"
+          job.selectedRoleIds = []
+          workflowJobs.set(jobId, job)
 
-    if (interaction.isButton() && interaction.customId.startsWith("cat-next-")) {
-      const jobId = interaction.customId.replace("cat-next-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-      await showCategoryMenu(interaction, job, jobs, job.categoryPage + 1)
-      return
-    }
+          if (job.categoryIsPrivate) {
+            await commands.showRoleMenu(interaction, job, workflowJobs, 0)
+          } else {
+            await commands.applyTemplate(interaction, job, workflowJobs)
+          }
+          return
+        }
+      }
 
-    if (interaction.isModalSubmit() && interaction.customId.startsWith("modal-category-")) {
-      const jobId = interaction.customId.replace("modal-category-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
+      if (
+        interaction.isStringSelectMenu() &&
+        interaction.customId.startsWith("pick-roles-")
+      ) {
+        const jobId = interaction.customId.slice("pick-roles-".length)
+        const job = getValidatedJob(interaction, workflowJobs, jobId, {
+          requiredFields: ["categoryName", "rolePage"],
+        })
+        const roles = await interaction.guild.roles.fetch()
+        const availableRoleIds = new Set(roles.map((role) => role.id))
+        const values = validateRoleSelection(interaction.values, availableRoleIds, {
+          allowNewRole: true,
+        })
 
-      job.categoryId = "new-category"
-      job.categoryName = interaction.fields.getTextInputValue("category-name")
-      jobs.set(jobId, job)
+        if (values.includes("new-role")) {
+          job.selectedRoleIds = values.filter((value) => value !== "new-role")
+          workflowJobs.set(jobId, job)
+          const fallbackName = job.pendingChannelName || job.categoryName
+          const {
+            ModalBuilder,
+            TextInputBuilder,
+            TextInputStyle,
+            ActionRowBuilder,
+          } = require("discord.js")
+          const modal = new ModalBuilder()
+            .setCustomId(`modal-role-${jobId}`)
+            .setTitle("Novo cargo")
+          const input = new TextInputBuilder()
+            .setCustomId("role-name")
+            .setLabel("Nome do cargo (opcional)")
+            .setPlaceholder(
+              `Se deixar em branco, o cargo será chamado de "${fallbackName}"`.slice(0, 100)
+            )
+            .setStyle(TextInputStyle.Short)
+            .setMaxLength(100)
+            .setRequired(false)
 
-      const { ButtonBuilder, ButtonStyle, ActionRowBuilder } = require("discord.js")
-      const yesButton = new ButtonBuilder()
-        .setCustomId(`cat-private-yes-${jobId}`)
-        .setLabel("Privada")
-        .setStyle(ButtonStyle.Danger)
+          modal.addComponents(new ActionRowBuilder().addComponents(input))
+          await interaction.showModal(modal)
+          return
+        }
 
-      const noButton = new ButtonBuilder()
-        .setCustomId(`cat-private-no-${jobId}`)
-        .setLabel("Pública")
-        .setStyle(ButtonStyle.Secondary)
-
-      await interaction.reply({
-        embeds: [baseEmbed("Visibilidade da categoria", `A categoria **${job.categoryName}** deve ser privada ou pública?`)],
-        components: [new ActionRowBuilder().addComponents(noButton, yesButton)],
-        ephemeral: true,
-      })
-      return
-    }
-
-    if (interaction.isButton() && interaction.customId.startsWith("cat-private-no-")) {
-      const jobId = interaction.customId.replace("cat-private-no-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-
-      job.categoryIsPrivate = false
-      jobs.set(jobId, job)
-
-      await applyTemplate(interaction, job, jobs)
-      return
-    }
-
-    if (interaction.isButton() && interaction.customId.startsWith("cat-private-yes-")) {
-      const jobId = interaction.customId.replace("cat-private-yes-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-
-      job.categoryIsPrivate = true
-      job.selectedRoleIds = []
-      jobs.set(jobId, job)
-
-      await showRoleMenu(interaction, job, jobs, 0)
-      return
-    }
-
-    if (interaction.isStringSelectMenu() && interaction.customId.startsWith("pick-roles-")) {
-      const jobId = interaction.customId.replace("pick-roles-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-
-      const values = interaction.values
-
-      if (values.includes("new-role")) {
-        job.selectedRoleIds = values.filter((v) => v !== "new-role")
-        jobs.set(jobId, job)
-
-        const fallbackName = job.pendingChannelName || job.categoryName
-
-        const { ModalBuilder, TextInputBuilder, TextInputStyle, ActionRowBuilder } = require("discord.js")
-        const modal = new ModalBuilder()
-          .setCustomId(`modal-role-${jobId}`)
-          .setTitle("Novo cargo")
-
-        const input = new TextInputBuilder()
-          .setCustomId("role-name")
-          .setLabel("Nome do cargo (opcional)")
-          .setPlaceholder(`Se deixar em branco, o cargo será chamado de "${fallbackName}"`.slice(0, 100))
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-
-        modal.addComponents(new ActionRowBuilder().addComponents(input))
-        await interaction.showModal(modal)
+        job.selectedRoleIds = values
+        workflowJobs.set(jobId, job)
+        await commands.showRoleMenu(interaction, job, workflowJobs, job.rolePage)
         return
       }
 
-      job.selectedRoleIds = values
-      jobs.set(jobId, job)
+      for (const direction of ["prev", "next"]) {
+        const prefix = `role-${direction}-`
 
-      await showRoleMenu(interaction, job, jobs, job.rolePage)
-      return
-    }
+        if (interaction.isButton() && interaction.customId.startsWith(prefix)) {
+          const jobId = interaction.customId.slice(prefix.length)
+          const job = getValidatedJob(interaction, workflowJobs, jobId, {
+            requiredFields: ["categoryName", "rolePage"],
+          })
+          const page = job.rolePage + (direction === "next" ? 1 : -1)
 
-    if (interaction.isButton() && interaction.customId.startsWith("role-prev-")) {
-      const jobId = interaction.customId.replace("role-prev-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-      await showRoleMenu(interaction, job, jobs, job.rolePage - 1)
-      return
-    }
+          if (!Number.isInteger(page) || page < 0) {
+            throw new WorkflowValidationError()
+          }
 
-    if (interaction.isButton() && interaction.customId.startsWith("role-next-")) {
-      const jobId = interaction.customId.replace("role-next-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-      await showRoleMenu(interaction, job, jobs, job.rolePage + 1)
-      return
-    }
-
-    if (interaction.isModalSubmit() && interaction.customId.startsWith("modal-role-")) {
-      const jobId = interaction.customId.replace("modal-role-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-
-      const typedName = interaction.fields.getTextInputValue("role-name")
-      const fallbackName = job.pendingChannelName || job.categoryName
-      const roleName = typedName && typedName.trim().length > 0 ? typedName.trim() : fallbackName
-
-      const newRole = await interaction.guild.roles.create({ name: roleName })
-
-      job.selectedRoleIds = [...(job.selectedRoleIds || []), newRole.id]
-      jobs.set(jobId, job)
-
-      await interaction.reply({
-        embeds: [baseEmbed("Cargo criado", `Cargo **${newRole.name}** criado com sucesso.`)],
-        ephemeral: true,
-      })
-
-      await showRoleMenu(interaction, job, jobs, job.rolePage || 0)
-      return
-    }
-
-    if (interaction.isButton() && interaction.customId.startsWith("confirm-roles-")) {
-      const jobId = interaction.customId.replace("confirm-roles-", "")
-      const job = jobs.get(jobId)
-      if (!job) return
-
-      if (job.pendingChannelName) {
-        await createPendingPrivateChannel(interaction, job, jobs)
-      } else {
-        await applyTemplate(interaction, job, jobs)
+          await commands.showRoleMenu(interaction, job, workflowJobs, page)
+          return
+        }
       }
-      return
-    }
-  } catch (error) {
-    console.log("Erro não tratado na interação:", error)
-    if (interaction.isRepliable() && !interaction.replied && !interaction.deferred) {
-      await interaction.reply({ content: "Ocorreu um erro inesperado, tente novamente.", ephemeral: true }).catch(() => {})
+
+      if (
+        interaction.isModalSubmit() &&
+        interaction.customId.startsWith("modal-role-")
+      ) {
+        const jobId = interaction.customId.slice("modal-role-".length)
+        const job = getValidatedJob(interaction, workflowJobs, jobId, {
+          requiredFields: ["categoryName", "rolePage"],
+        })
+        const typedName = validateModalName(
+          interaction.fields.getTextInputValue("role-name"),
+          "O nome do cargo",
+          { optional: true }
+        )
+        const fallbackName = validateModalName(
+          job.pendingChannelName || job.categoryName,
+          "O nome do cargo"
+        )
+        const roleName = typedName || fallbackName
+        const newRole = await interaction.guild.roles.create({ name: roleName })
+
+        job.selectedRoleIds = [
+          ...new Set([...(job.selectedRoleIds || []), newRole.id]),
+        ]
+        workflowJobs.set(jobId, job)
+        await interaction.reply({
+          embeds: [
+            baseEmbed("Cargo criado", `Cargo **${newRole.name}** criado com sucesso.`),
+          ],
+          ephemeral: true,
+        })
+        await commands.showRoleMenu(interaction, job, workflowJobs, job.rolePage)
+        return
+      }
+
+      if (
+        interaction.isButton() &&
+        interaction.customId.startsWith("confirm-roles-")
+      ) {
+        const jobId = interaction.customId.slice("confirm-roles-".length)
+        const job = getValidatedJob(interaction, workflowJobs, jobId, {
+          requiredFields: ["categoryName", "selectedRoleIds"],
+        })
+        const roles = await interaction.guild.roles.fetch()
+        const availableRoleIds = new Set(roles.map((role) => role.id))
+
+        job.selectedRoleIds = validateRoleSelection(
+          job.selectedRoleIds,
+          availableRoleIds
+        )
+
+        if (job.pendingChannelName) {
+          await commands.createPendingPrivateChannel(
+            interaction,
+            job,
+            workflowJobs
+          )
+        } else {
+          await commands.applyTemplate(interaction, job, workflowJobs)
+        }
+      }
+    } catch (error) {
+      console.error("Falha ao processar interação de template.")
+      await replyWithWorkflowError(interaction, error)
     }
   }
 }
 
-module.exports = { handleInteraction }
+const handleInteraction = createInteractionHandler()
+
+module.exports = { createInteractionHandler, handleInteraction }

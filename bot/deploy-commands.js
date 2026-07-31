@@ -11,6 +11,10 @@ const commands = [
 const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN)
 
 async function deploy() {
+  if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CLIENT_ID) {
+    throw new Error("Configuração obrigatória do Discord ausente")
+  }
+
   const data = await rest.put(
     Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
     { body: commands }
@@ -18,4 +22,7 @@ async function deploy() {
   console.log(`${data.length} comando(s) registrado(s) com sucesso`)
 }
 
-deploy()
+deploy().catch(() => {
+  console.error("Falha ao registrar comandos globais do Discord.")
+  process.exitCode = 1
+})

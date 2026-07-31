@@ -28,7 +28,7 @@ describe("reorderTemplateChannels", () => {
 
     await reorderTemplateChannels(
       TEMPLATE_ID,
-      [{ id: SECOND_ID, order: 900 }, { id: FIRST_ID, order: -5 }],
+      [{ id: SECOND_ID }, { id: FIRST_ID }],
       deps
     )
 
@@ -77,6 +77,7 @@ describe("reorderTemplateChannels", () => {
     ["extra", [{ id: FIRST_ID }, { id: SECOND_ID }, { id: "channel_3" }]],
     ["externo", [{ id: FIRST_ID }, { id: "foreign_channel" }]],
     ["payload inválido", null],
+    ["campo extra", [{ id: FIRST_ID }, { id: SECOND_ID, order: 1 }]],
   ])("rejeita conjunto %s e não persiste", async (_label, submitted) => {
     const deps = dependencies()
 

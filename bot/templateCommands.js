@@ -11,6 +11,14 @@ const {
 } = require("discord.js")
 const { PrismaClient } = require("@prisma/client")
 const { baseEmbed, paginate, paginationRow, respond } = require("./utils")
+const domainConstants = require("../domain/domain-constants.json")
+const { validateChannelName } = require("./input-validation")
+const {
+  WorkflowValidationError,
+  createTemplateJob,
+  validateRoleSelection,
+  validateStoredTemplate,
+} = require("./template-workflow-validation")
 
 const prisma = new PrismaClient()
 
@@ -19,7 +27,6 @@ const CHANNEL_TYPE_MAP = {
   VOICE: ChannelType.GuildVoice,
   FORUM: ChannelType.GuildForum,
   ANNOUNCEMENT: ChannelType.GuildAnnouncement,
-  STAGE: ChannelType.GuildStageVoice,
 }
 
 const PAGE_SIZE = 24
@@ -28,6 +35,7 @@ async function showTemplateMenu(interaction, userId, jobs) {
   const templates = await prisma.template.findMany({
     where: { userId },
     orderBy: { createdAt: "desc" },
+    take: domainConstants.limits.templatesPerUserMax + 1,
   })
 
   if (templates.length === 0) {
@@ -38,8 +46,19 @@ async function showTemplateMenu(interaction, userId, jobs) {
     return
   }
 
+  if (
+    templates.length > domainConstants.limits.templatesPerUserMax ||
+    templates.some((template) => !validateChannelName(template.name))
+  ) {
+    await interaction.reply({
+      embeds: [baseEmbed("Templates indisponíveis", "Revise a quantidade e os nomes dos templates no painel web antes de continuar.")],
+      ephemeral: true,
+    })
+    return
+  }
+
   const jobId = interaction.id
-  jobs.set(jobId, { id: jobId, ownerId: interaction.user.id, guildId: interaction.guildId })
+  jobs.set(jobId, createTemplateJob(interaction, userId))
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`pick-template-${jobId}`)
@@ -57,6 +76,11 @@ async function showCategoryMenu(interaction, job, jobs, page = 0) {
   const guild = interaction.guild
   const categories = guild.channels.cache.filter((c) => c.type === ChannelType.GuildCategory)
   const categoryArray = Array.from(categories.values())
+  const maximumPage = Math.max(0, Math.ceil(categoryArray.length / PAGE_SIZE) - 1)
+
+  if (!Number.isInteger(page) || page < 0 || page > maximumPage) {
+    throw new WorkflowValidationError()
+  }
 
   job.categoryPage = page
   jobs.set(job.id, job)
@@ -92,6 +116,11 @@ async function showRoleMenu(interaction, job, jobs, page = 0) {
   const roleArray = Array.from(roles.values()).filter(
     (r) => r.id !== guild.roles.everyone.id && !r.managed
   )
+  const maximumPage = Math.max(0, Math.ceil(roleArray.length / PAGE_SIZE) - 1)
+
+  if (!Number.isInteger(page) || page < 0 || page > maximumPage) {
+    throw new WorkflowValidationError()
+  }
 
   job.rolePage = page
   jobs.set(job.id, job)
@@ -138,15 +167,22 @@ async function showRoleMenu(interaction, job, jobs, page = 0) {
 }
 
 async function applyTemplate(interaction, job, jobs) {
-  await respond(interaction, {
-    embeds: [baseEmbed("Criando canais", `Aplicando template **${job.templateName}** dentro da categoria **${job.categoryName}**...`)],
-    components: [],
+  const template = await prisma.template.findFirst({
+    where: { id: job.templateId, userId: job.userId },
+    include: { channels: { orderBy: { order: "asc" } } },
   })
+  validateStoredTemplate(template, job.userId)
 
   const guild = interaction.guild
 
   const categoryOverwrites = []
   if (job.categoryIsPrivate) {
+    const roles = await guild.roles.fetch()
+    const availableRoleIds = new Set(roles.map((role) => role.id))
+    job.selectedRoleIds = validateRoleSelection(
+      job.selectedRoleIds,
+      availableRoleIds
+    )
     categoryOverwrites.push({ id: guild.roles.everyone.id, deny: ["ViewChannel"] })
     for (const roleId of job.selectedRoleIds || []) {
       categoryOverwrites.push({ id: roleId, allow: ["ViewChannel"] })
@@ -155,19 +191,27 @@ async function applyTemplate(interaction, job, jobs) {
 
   let category
   if (job.categoryId === "new-category") {
+    category = null
+  } else {
+    category = await guild.channels.fetch(job.categoryId)
+
+    if (!category || category.type !== ChannelType.GuildCategory) {
+      throw new Error("Invalid template workflow category")
+    }
+  }
+
+  await respond(interaction, {
+    embeds: [baseEmbed("Criando canais", `Aplicando template **${job.templateName}** dentro da categoria **${job.categoryName}**...`)],
+    components: [],
+  })
+
+  if (!category) {
     category = await guild.channels.create({
       name: job.categoryName,
       type: ChannelType.GuildCategory,
       permissionOverwrites: categoryOverwrites,
     })
-  } else {
-    category = await guild.channels.fetch(job.categoryId)
   }
-
-  const template = await prisma.template.findUnique({
-    where: { id: job.templateId },
-    include: { channels: { orderBy: { order: "asc" } } },
-  })
 
   const privateChannelsPending = template.channels.filter((c) => c.isPrivate)
   job.remainingPrivateChannels = privateChannelsPending
@@ -222,6 +266,21 @@ async function processNextPrivateChannel(interaction, job, jobs) {
 async function createPendingPrivateChannel(interaction, job, jobs) {
   const guild = interaction.guild
   const channelData = job.remainingPrivateChannels[job.privateChannelIndex]
+  const roles = await guild.roles.fetch()
+  const availableRoleIds = new Set(roles.map((role) => role.id))
+
+  job.selectedRoleIds = validateRoleSelection(
+    job.selectedRoleIds,
+    availableRoleIds
+  )
+
+  if (
+    !channelData ||
+    !domainConstants.channelTypes.includes(channelData.type) ||
+    !validateChannelName(channelData.name)
+  ) {
+    throw new Error("Invalid private channel configuration")
+  }
 
   const overwrites = [{ id: guild.roles.everyone.id, deny: ["ViewChannel"] }]
   for (const roleId of job.selectedRoleIds) {

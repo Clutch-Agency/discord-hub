@@ -10,13 +10,14 @@ export default async function ServersPage() {
     redirect("/")
   }
 
-  const { error, guilds } = await getGuilds()
+  const result = await getGuilds()
+  const guilds = result.ok ? result.data.guilds : []
   const discordBotInviteUrl = process.env.DISCORD_BOT_INVITE_URL || ""
 
   return (
     <ServersClient
       initialGuilds={guilds}
-      initialError={error}
+      initialError={!result.ok}
       discordBotInviteUrl={discordBotInviteUrl}
       removeGuild={removeGuild}
     />

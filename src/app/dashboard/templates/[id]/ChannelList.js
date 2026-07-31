@@ -73,8 +73,9 @@ function SortableChannelItem({
     const formData = new FormData()
     formData.append("name", name)
     formData.append("type", type)
-    formData.append("isPrivate", isPrivate ? "on" : "off")
-    formData.append("order", String(channel.order))
+    if (isPrivate) {
+      formData.append("isPrivate", "on")
+    }
 
     await updateChannel(channel.id, formData)
     setIsEditing(false)
@@ -106,6 +107,8 @@ function SortableChannelItem({
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
+            minLength={1}
+            maxLength={100}
             required
             className="min-w-0 rounded-xl border border-white/10 bg-[#17171a] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-clutch-pink focus:ring-2 focus:ring-clutch-pink/20"
           />
@@ -248,7 +251,10 @@ export default function ChannelList({
     const [movedChannel] = newChannels.splice(oldIndex, 1)
     newChannels.splice(newIndex, 0, movedChannel)
 
-    await updateChannelOrder(templateId, newChannels)
+    await updateChannelOrder(
+      templateId,
+      newChannels.map((channel) => ({ id: channel.id }))
+    )
   }
 
   if (channels.length === 0) {

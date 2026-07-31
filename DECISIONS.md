@@ -646,6 +646,192 @@ ou quando houver duplicação comprovada entre diretórios.
 
 ---
 
+# ADR-021 — `ownershipLockMinutes` preservado, mas não editável
+
+**Status:** Aceita
+
+**Data:** 31/07/2026
+
+## Contexto
+
+O schema e o editor expunham um tempo de bloqueio de propriedade, mas a engine
+de salas temporárias nunca leu esse campo nem implementou transferência,
+disputa ou bloqueio de owner. Persistir alterações feitas no controle criava a
+impressão de uma proteção inexistente.
+
+## Decisão
+
+Remover `ownershipLockMinutes` da projeção e do formulário editável, rejeitar o
+campo se for injetado no contrato de atualização e deixar de defini-lo na
+criação da aplicação. A coluna e os dados existentes permanecem intactos no
+schema e nas migrations.
+
+Uma implementação futura deverá primeiro definir a regra completa de
+propriedade, concorrência e recuperação; somente depois o controle poderá
+voltar à interface.
+
+## Consequências
+
+### Positivas
+
+- a interface deixa de prometer um comportamento inexistente;
+- saves comuns não alteram mais esse valor;
+- nenhum dado histórico ou migration é perdido.
+
+### Negativas
+
+- a coluna continua como dívida de schema até uma decisão funcional futura;
+- não há bloqueio ou transferência de propriedade nesta fase.
+
+## Critério de revisão
+
+Reavaliar quando houver especificação e implementação testável de ownership de
+salas temporárias.
+
+---
+
+# ADR-022 — Listas de cargos de VoiceHub são mutuamente exclusivas
+
+**Status:** Aceita
+
+**Data:** 31/07/2026
+
+## Contexto
+
+Um mesmo cargo em `permissionRoles`, `ignoredRoles` e `moderatorRoles` produz
+semânticas conflitantes: pode simultaneamente negar acesso, impedir criação de
+sala e conceder moderação. O comportamento final dependeria da ordem dos
+overwrites e seria difícil de explicar.
+
+## Decisão
+
+Cada lista aceita no máximo 25 snowflakes válidos, sem duplicatas internas. Um
+mesmo cargo não pode aparecer em mais de uma das três listas. O update valida a
+combinação com valores já persistidos e, quando há cargos submetidos, confirma
+que eles ainda pertencem à guild antes de qualquer rename ou escrita.
+
+## Consequências
+
+### Positivas
+
+- permissões passam a ter intenção inequívoca;
+- cargos removidos ou de outra guild não chegam ao Discord;
+- o total máximo permanece compatível com os overwrites usados pelo produto.
+
+### Negativas
+
+- configurações legadas com sobreposição precisam ser corrigidas antes de um
+  novo save;
+- selecionar o mesmo cargo para duas responsabilidades deixa de ser permitido.
+
+## Critério de revisão
+
+Reavaliar somente se o produto definir precedência explícita e compreensível
+entre as responsabilidades de cargos.
+
+---
+
+# ADR-023 — Integração PostgreSQL exige banco de teste explícito
+
+**Status:** Aceita
+
+**Data:** 31/07/2026
+
+## Contexto
+
+Os testes existentes não exercitavam transactions ou constraints reais. O
+ambiente atual não possui PostgreSQL local descartável nem
+`TEST_DATABASE_URL`; usar `DATABASE_URL` poderia atingir dados reais.
+
+## Decisão
+
+Testes de integração usam exclusivamente `TEST_DATABASE_URL`. O runner recusa
+URL igual a `DATABASE_URL`, protocolos não PostgreSQL e database cujo nome não
+contenha `test`. Antes da suíte, aplica apenas as migrations existentes com
+`prisma migrate deploy`; cada cenário cria identificadores próprios e remove
+seus registros ao final.
+
+Não instalar Docker, não criar banco local da aplicação e não usar Supabase
+nesta fase. Ausência da variável produz estado explícito de não execução.
+
+## Consequências
+
+### Positivas
+
+- reduz drasticamente o risco de testes destrutivos no banco real;
+- transactions e constraints podem ser exercitadas de forma reproduzível;
+- nenhuma dependência ou migration nova é necessária.
+
+### Negativas
+
+- a integração fica indisponível até que um PostgreSQL descartável seja
+  fornecido;
+- migrations são aplicadas a cada execução explícita do runner.
+
+## Critério de revisão
+
+Reavaliar quando a fase de empacotamento introduzir infraestrutura descartável
+oficial em CI ou Docker.
+
+---
+
+# ADR-024 — Docker Compose com PostgreSQL local é o caminho oficial de instalação
+
+**Status:** Aceita
+
+**Data:** 31/07/2026
+
+## Contexto
+
+O projeto dependia de Node.js, Prisma, PostgreSQL externo e execução conjunta
+via `concurrently`. A configuração histórica com Supabase/PM2 não era
+reproduzível, mantinha web e bot no mesmo host por causa de `127.0.0.1` e
+exigia etapas manuais de migration e registro do slash command.
+
+## Decisão
+
+O produto será instalado oficialmente com `docker compose up -d`. O stack tem
+três serviços permanentes: `web`, `bot` e `postgres`. Dois jobs efêmeros usam a
+mesma imagem do bot: `migrate` executa `prisma migrate deploy` e
+`discord-commands` registra comandos globais. Dependências condicionais e
+healthchecks impedem que bot/web iniciem antes de seus pré-requisitos.
+
+PostgreSQL 17.10 Alpine é o banco padrão, com volume nomeado no caminho oficial
+da imagem para versões 17 e anteriores. Node.js 22.23.1 Debian slim é usado em
+imagens multi-stage; o web usa o output standalone do Next.js. Somente a porta
+do web é publicada. PostgreSQL e API do bot permanecem na rede Compose.
+
+`scripts/container-entrypoint.mjs` monta `DATABASE_URL` com encoding seguro a
+partir das variáveis PostgreSQL e encaminha sinais. Supabase não é dependência
+do produto; continua apenas tecnicamente compatível como PostgreSQL externo em
+execuções customizadas fora do caminho Compose.
+
+## Consequências
+
+### Positivas
+
+- host precisa apenas de Docker Engine/Desktop com Compose V2;
+- migrations, Prisma Client e slash command deixam de exigir passos manuais;
+- banco persiste entre recriações e não é exposto ao host;
+- web e bot têm ciclos, healthchecks e shutdown independentes;
+- imagens oficiais fixadas tornam builds mais previsíveis em amd64/arm64.
+
+### Negativas
+
+- o primeiro build exige internet e espaço para duas imagens da aplicação;
+- registro global de comandos depende da API Discord e pode bloquear o bot se
+  as credenciais ou a rede estiverem inválidas;
+- downgrade de código após migrations não é automaticamente reversível;
+- a validação end-to-end do stack exige um host com Docker disponível.
+
+## Critério de revisão
+
+Reavaliar tags fixadas em ciclos de atualização de segurança; separar jobs em
+imagens próprias apenas se o custo atual ficar relevante; rever registro global
+se o produto adotar comandos por guild ou múltiplas aplicações Discord.
+
+---
+
 # Modelo para novas decisões
 
 ```md

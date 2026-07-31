@@ -2,22 +2,10 @@ import {
   AUTHORIZATION_ERROR_CODES,
   AuthorizationError,
 } from "../auth/authorization-error.js"
-
-const INTERNAL_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
-
-function normalizeInternalId(value) {
-  if (typeof value !== "string") {
-    return null
-  }
-
-  const normalized = value.trim()
-
-  return INTERNAL_ID_PATTERN.test(normalized) ? normalized : null
-}
-
-function invalidInput() {
-  throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.INVALID_INPUT)
-}
+import {
+  validateChannelOrderPayload,
+  validateTemplateId,
+} from "./template-validation.js"
 
 export async function reorderTemplateChannels(
   templateId,
@@ -25,22 +13,8 @@ export async function reorderTemplateChannels(
   dependencies
 ) {
   const actor = await dependencies.requireOperator()
-  const normalizedTemplateId = normalizeInternalId(templateId)
-
-  if (!normalizedTemplateId || !Array.isArray(submittedChannels)) {
-    invalidInput()
-  }
-
-  const submittedIds = submittedChannels.map((channel) =>
-    normalizeInternalId(channel?.id)
-  )
-
-  if (
-    submittedIds.some((id) => !id) ||
-    new Set(submittedIds).size !== submittedIds.length
-  ) {
-    invalidInput()
-  }
+  const normalizedTemplateId = validateTemplateId(templateId)
+  const submittedIds = validateChannelOrderPayload(submittedChannels)
 
   const template = await dependencies.findOwnedTemplate(
     normalizedTemplateId,
@@ -58,7 +32,11 @@ export async function reorderTemplateChannels(
     submittedIds.length !== expectedIds.length ||
     submittedIds.some((id) => !expectedSet.has(id))
   ) {
-    invalidInput()
+    throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.INVALID_INPUT, {
+      publicMessage:
+        "A ordem enviada não corresponde à estrutura atual do template.",
+      field: "channels",
+    })
   }
 
   await dependencies.persistOrder(normalizedTemplateId, submittedIds)

@@ -126,7 +126,7 @@ describe("getGuildRolesResult", () => {
         }),
         fetchGuildRoles: async () => roles,
       })
-    ).resolves.toEqual({ error: false, roles })
+    ).resolves.toEqual({ ok: true, data: { roles } })
   })
 
   it("retorna código seguro e lista vazia no caminho negado", async () => {
@@ -139,10 +139,9 @@ describe("getGuildRolesResult", () => {
         fetchGuildRoles: vi.fn(),
       })
     ).resolves.toEqual({
-      error: true,
+      ok: false,
       code: AUTHORIZATION_ERROR_CODES.ACCESS_DENIED,
       message: "Você não tem permissão para executar esta operação.",
-      roles: [],
     })
   })
 })

@@ -4,10 +4,10 @@ import {
   AuthorizationError,
 } from "./auth/authorization-error.js"
 import { prisma } from "./prisma.js"
+import domainConstants from "../../domain/domain-constants.json"
 
-export const USER_TOOLS = Object.freeze([
-  Object.freeze({
-    key: "templates",
+const USER_TOOL_METADATA = Object.freeze({
+  templates: Object.freeze({
     name: "Templates de Servidor",
     description:
       "Crie e aplique templates de canais e cargos no seu servidor Discord.",
@@ -15,8 +15,7 @@ export const USER_TOOLS = Object.freeze([
     href: "/dashboard/templates",
     enabled: false,
   }),
-  Object.freeze({
-    key: "voice-channels",
+  "voice-channels": Object.freeze({
     name: "Canais de Voz Temporários",
     description:
       "Crie canais de voz temporários que aparecem quando alguém entra e desaparecem quando todos saem.",
@@ -24,9 +23,15 @@ export const USER_TOOLS = Object.freeze([
     href: "/dashboard/voice-channels",
     enabled: false,
   }),
-])
+})
 
-const USER_TOOL_KEYS = new Set(USER_TOOLS.map((tool) => tool.key))
+export const USER_TOOLS = Object.freeze(
+  domainConstants.toolKeys.map((key) =>
+    Object.freeze({ key, ...USER_TOOL_METADATA[key] })
+  )
+)
+
+const USER_TOOL_KEYS = new Set(domainConstants.toolKeys)
 
 export function validateToolToggle(toolKey, enabled) {
   if (!USER_TOOL_KEYS.has(toolKey) || typeof enabled !== "boolean") {

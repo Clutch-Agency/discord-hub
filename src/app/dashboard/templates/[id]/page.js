@@ -19,13 +19,18 @@ import {
 } from "./actions"
 import ChannelList from "./ChannelList"
 import { isToolEnabled } from "@/lib/user-tools"
+import { domainConstants } from "@/lib/validation/domain-validation"
 
-const CHANNEL_TYPES = [
-  { value: "TEXT", label: "Texto" },
-  { value: "VOICE", label: "Voz" },
-  { value: "FORUM", label: "Fórum" },
-  { value: "ANNOUNCEMENT", label: "Anúncios" },
-]
+const CHANNEL_TYPE_LABELS = Object.freeze({
+  TEXT: "Texto",
+  VOICE: "Voz",
+  FORUM: "Fórum",
+  ANNOUNCEMENT: "Anúncios",
+})
+const CHANNEL_TYPES = domainConstants.channelTypes.map((value) => ({
+  value,
+  label: CHANNEL_TYPE_LABELS[value],
+}))
 
 export default async function TemplateDetailsPage({ params }) {
   const session = await auth()
@@ -120,6 +125,8 @@ export default async function TemplateDetailsPage({ params }) {
             type="text"
             name="name"
             defaultValue={template.name}
+            minLength={1}
+            maxLength={100}
             required
             className="min-w-0 flex-1 rounded-xl border border-white/10 bg-[#17171a] px-4 py-3 text-sm text-white outline-none transition-colors placeholder:text-clutch-gray-light focus:border-clutch-pink focus:ring-2 focus:ring-clutch-pink/20"
           />
@@ -157,6 +164,8 @@ export default async function TemplateDetailsPage({ params }) {
             type="text"
             name="name"
             placeholder="Nome do novo canal"
+            minLength={1}
+            maxLength={100}
             required
             className="min-w-0 rounded-xl border border-white/10 bg-[#17171a] px-4 py-3 text-sm text-white outline-none transition-colors placeholder:text-clutch-gray-light focus:border-clutch-pink focus:ring-2 focus:ring-clutch-pink/20"
           />

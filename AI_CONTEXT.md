@@ -1,310 +1,248 @@
-# AI Context — Discord Hub / Clutch Hub
+# AI_CONTEXT — Clutch Hub
 
-> Contexto permanente para agentes de IA. Atualizado em 31/07/2026 após a
-> Fase 1B. Para a auditoria histórica detalhada, consulte `PROJECT_REPORT.md`;
-> confirme sempre no código porque o relatório antecede as Fases 1A e 1B.
+Atualizado em 31/07/2026 após a Fase 3A.
 
 # 1. Visão Geral
 
-O Clutch Hub é uma ferramenta pessoal/interna para administrar e automatizar
-servidores Discord usados em projetos de jogos. O painel reduz trabalho manual
-na criação de estruturas de canais e na configuração de salas de voz
-temporárias. O público atual é um conjunto explícito de operadores autorizados,
-atuando apenas nas guilds que administram no Discord.
+Clutch Hub é um SaaS pessoal/self-hosted para administrar e automatizar
+servidores Discord. Centraliza templates de canais, servidores vinculados e
+salas de voz temporárias em um painel web, mantendo os efeitos Discord em um
+bot separado. O público inferido é um operador individual ou pequeno grupo
+explicitamente autorizado.
 
-O MVP está funcional e em estabilização. As Fases 1A e 1B concluíram a fundação
-e a aplicação inicial de autenticação/autorização: dashboard, guilds, templates,
-toggles e CRUD de VoiceHub agora exigem operador; efeitos Discord também exigem
-autorização atual da guild no processo web e novamente no bot.
+O núcleo funcional, autenticação/autorização e validações de domínio estão
+implementados. A instalação oficial agora é plug & play com Docker Compose,
+PostgreSQL local persistente, migrations e registro de comandos automáticos.
+Consistência/compensação Discord ↔ banco e reconciliação pós-restart permanecem
+para fases posteriores.
 
 # 2. Stack
 
-- **Linguagem:** JavaScript; ESM no Next.js e CommonJS no bot.
-- **Frontend:** React 18, Next.js 15 App Router e Tailwind CSS 4.
-- **Backend web:** Server Components e Server Actions do Next.js.
-- **Bot/API privada:** Node.js, discord.js 14 e Express 5.
-- **Banco/ORM:** PostgreSQL e Prisma 6.
-- **Autenticação:** Auth.js/NextAuth 5 beta, Discord OAuth, PrismaAdapter e
-  sessões persistidas em banco.
-- **Hospedagem atual documentada:** README padrão do Next, ainda inadequado ao
-  projeto; o repositório não comprova uma implantação ativa.
-- **Hospedagem-alvo:** Docker Compose self-hosted, ainda não implementado.
-- **Serviços externos:** Discord OAuth2, Gateway/REST Discord e PostgreSQL
-  atualmente configurável por `DATABASE_URL`.
-- **Bibliotecas relevantes:** dnd-kit, Lucide React, Vitest, concurrently,
-  dotenv e dotenv-cli.
+- **Linguagem:** JavaScript em ESM no web e CommonJS no bot.
+- **Frontend/backend web:** Next.js 15.5.22 App Router, React 18, Server
+  Components e Server Actions.
+- **Estilo:** Tailwind CSS 4 e `lucide-react`.
+- **Drag-and-drop:** `@dnd-kit/*` no editor de templates.
+- **Bot/backend privado:** Node.js, `discord.js` 14 e Express 5.
+- **Banco/ORM:** PostgreSQL 17 no caminho Docker; Prisma 6.19.3.
+- **Autenticação:** Auth.js v5 beta, Discord OAuth e PrismaAdapter; sessões em
+  banco.
+- **Testes:** Vitest, incluindo testes HTTP locais e integração PostgreSQL
+  opcional.
+- **Hospedagem:** self-hosted com Docker Compose; imagens Node 22 Debian slim e
+  PostgreSQL Alpine. Não há dependência de Vercel ou Supabase.
+- **Serviços externos:** Discord OAuth, REST e Gateway. Supabase é apenas uma
+  alternativa PostgreSQL customizada fora do Compose.
 
 # 3. Arquitetura
 
-O projeto mantém dois processos e um banco compartilhado:
+O sistema é um monólito modular distribuído em dois processos da aplicação:
 
 ```text
-Navegador
-  → Next.js Server Components / Server Actions
-    → serviços específicos em src/lib
-      → Prisma → PostgreSQL
-      → cliente HTTP privado → bot Express → discord.js → Discord
-
-Discord Gateway
-  → bot
-    → Prisma → PostgreSQL
-    → discord.js → recursos Discord
+Navegador → web Next.js → PostgreSQL
+                  └────→ API privada bot → Discord
+                                   └────→ PostgreSQL
 ```
 
-O dashboard é um segmento dinâmico e protegido por `requireOperator()` no
-layout. Server Actions sensíveis repetem a autorização. Recursos ligados a uma
-guild seguem defesa em profundidade: ator derivado da sessão, ownership no
-banco, guild derivada do registro quando possível, verificação web pelo bot e
-nova verificação no endpoint mutável.
+Server Actions e páginas server-side orquestram casos de uso. Autorização é
+defensiva em profundidade: sessão/operador no web, ownership do recurso,
+autorização atual na guild, segredo + ator na API privada e nova verificação no
+bot. Prisma é compartilhado como persistência, sem endpoint público genérico.
 
-Não há uma camada genérica de domínio. Serviços pequenos e testáveis existem
-apenas nos fluxos que precisam coordenar autorização, Prisma e Discord:
-
-- operações de guild;
-- operações de VoiceHub;
-- reorder de canais;
-- toggles de ferramentas;
-- cliente da API privada.
-
-Server Components continuam responsáveis por leitura/composição; Server
-Actions coordenam mutações; Client Components mantêm somente estado de UI.
+No Compose há três serviços permanentes (`postgres`, `bot`, `web`) e dois jobs
+efêmeros (`migrate`, `discord-commands`). A ordem é PostgreSQL healthy →
+migrations → registro Discord → bot healthy → web. Somente o web publica porta.
+O volume `postgres_data` preserva o banco.
 
 # 4. Estrutura Principal
 
-- `src/app/`: App Router, páginas, layouts, Auth route e Server Actions.
-- `src/app/dashboard/`: área administrativa protegida, organizada por feature.
-- `src/components/`: navegação e componentes compartilhados.
-- `src/lib/auth/`: identidade autenticada, allowlist, autorização de operador e
-  erros públicos previsíveis.
-- `src/lib/discord/`: IDs Discord, autorização de guild, operações de guild e
-  cliente HTTP privado com timeout.
-- `src/lib/voice-hubs/`: regras testáveis e integração concreta do CRUD seguro.
-- `src/lib/templates/`: validação atômica da reordenação completa.
-- `bot/`: processo Discord, API Express privada, comandos e engine de voz.
-- `prisma/`: schema e três migrations PostgreSQL existentes.
-- `.ai/`: skills, prompts, checklists e fundamentos para agentes.
-- `.agents/skills/`: adaptadores de descoberta para as skills canônicas.
+- `src/app/`: rotas App Router, layouts, páginas e Server Actions.
+- `src/components/`: componentes visuais compartilhados.
+- `src/lib/auth/`: ator autenticado, allowlist e autorização de operador.
+- `src/lib/discord/`: cliente privado do bot, autorização/listagens por guild.
+- `src/lib/templates/`: validações e ordenação segura de templates.
+- `src/lib/voice-hubs/`: regras, operações e serviço de VoiceHub.
+- `src/lib/contracts/`: contratos discriminados de respostas de actions.
+- `src/lib/validation/`: primitivas de validação compartilháveis.
+- `bot/`: cliente Discord, API Express, comandos e engine de salas temporárias.
+- `domain/`: constantes de domínio consumidas por web e bot.
+- `prisma/`: schema, migrations e integração PostgreSQL.
+- `scripts/`: entrypoint Docker e runner de integração.
+- `public/`: imagens/logos estáticos.
+- `Dockerfile`, `compose.yaml`, `.dockerignore`: empacotamento oficial.
 
 # 5. Convenções do Projeto
 
-- Componentes React em PascalCase; funções/actions em camelCase.
-- Rotas em kebab-case e segmentos dinâmicos `[id]`.
-- Modelos Prisma em PascalCase singular.
-- Server Components são o padrão; usar `"use client"` só com interação/estado.
-- Server Actions devem ser tratadas como endpoints públicos: autenticar,
-  validar, autorizar e limitar consultas por owner/guild dentro da própria ação.
-- O ator nunca vem do navegador. `requireAuthenticatedActor()` deriva
-  `userId` e `discordUserId` de sessão + `Account` persistida.
-- Snowflakes usam `normalizeDiscordId()`; a allowlist tem parser único.
-- Erros de segurança usam `AuthorizationError` e códigos estáveis; respostas
-  públicas passam por `toAuthorizationFailure()` quando retornadas como dados.
-- Prisma do processo web deve usar `src/lib/prisma.js`.
-- Chamadas web→bot devem usar `src/lib/discord/bot-api-client.js`; não fazer
-  `fetch` direto nem implementar retry automático em mutações.
-- O catálogo oficial de ferramentas é `USER_TOOLS` em `src/lib/user-tools.js`.
+- Arquivos React e componentes: PascalCase; módulos/rotas: kebab-case ou nomes
+  descritivos existentes; funções/variáveis: camelCase.
+- UI de feature fica sob sua rota em `src/app/dashboard`; componentes realmente
+  compartilhados ficam em `src/components`.
+- O projeto não possui uma camada formal de hooks; não criar uma sem necessidade.
+- Integrações e regras ficam em `src/lib`, não diretamente em componentes.
+- Server Actions são tratadas como endpoints públicos e repetem autenticação,
+  validação, ownership e autorização.
+- Rotas web seguem App Router; a única API pública tradicional é Auth.js. A API
+  Express do bot é privada e autenticada por headers.
+- Validação runtime usa funções explícitas e constantes de
+  `domain/domain-constants.json`, sem coerção permissiva.
+- Erros públicos usam `AuthorizationError`, códigos seguros de action result e
+  mapeamento conhecido de erros Prisma. Stack/cause/provider não vazam.
+- Testes ficam próximos do módulo (`*.test.js`/`*.test.mjs`).
 
 # 6. Banco de Dados
 
-Entidades principais:
+Entidades centrais: `User`, `Account`, `Session`, `VerificationToken` (Auth.js),
+`Template`, `Channel`, `UserTool`, `VoiceHub` e `TemporaryVoiceChannel`.
 
-- `User`, `Account`, `Session`, `VerificationToken`: Auth.js.
-- `Template` → `Channel`: estruturas reutilizáveis por usuário.
-- `UserTool`: toggle por chave e usuário.
-- `VoiceHub` → `TemporaryVoiceChannel`: configuração de Hub e modelo planejado
-  para persistência de salas temporárias.
+Um usuário possui templates, toggles e VoiceHubs. Template possui canais com
+ordem. VoiceHub referencia uma guild/canal Discord e contém configuração de
+permissões/retention; canais temporários pertencem ao Hub. Cascades removem
+filhos; IDs Discord críticos são únicos e `TemporaryVoiceChannel` possui
+índices por Hub/canal.
 
-Templates e Hubs pertencem a `User`. `VoiceHub` guarda `guildId` e `channelId`
-Discord; o canal é único. O painel persiste configurações e o bot as consulta.
-Recursos reais continuam no Discord, portanto banco e Discord não formam uma
-transação distribuída. `TemporaryVoiceChannel` existe no schema, mas ainda não
-é usado pelo runtime.
-
-Nenhum schema ou migration foi alterado nas Fases 1A/1B.
+O schema é PostgreSQL e migrations incrementais existentes são aplicadas por
+`migrate deploy` antes dos processos. A Fase 3A não alterou schema nem migration.
+O estado operacional de salas ainda vive principalmente em memória; a tabela
+de canais temporários ainda não participa do runtime.
 
 # 7. Autenticação
 
-- Login exclusivo por Discord OAuth; não há senha, cadastro separado ou
-  recuperação de senha.
-- `requireAuthenticatedActor()` resolve o CUID interno e o ID Discord sem
-  aceitar identidade do cliente.
-- `requireOperator()` exige `ALLOWED_DISCORD_USER_IDS`; configuração ausente,
-  vazia ou inválida nega acesso.
-- O layout do dashboard exige operador e impede renderização administrativa
-  antes da autorização; o segmento é `force-dynamic` por depender de sessão.
-- `requireGuildAuthorization()` consulta o bot com o ator autenticado.
-- O bot exige owner, `Administrator` ou `ManageGuild` usando o estado atual do
-  Discord.
-- Endpoints mutáveis exigem `x-bot-secret` e `x-actor-discord-id` e repetem a
-  autorização.
-- Não há roles SaaS; “operador” é a allowlist e não substitui a permissão da
-  guild.
+Login usa Discord OAuth via Auth.js. Adapter Prisma persiste conta e sessão; o
+callback acrescenta o `user.id`. O dashboard chama `requireOperator()`, que
+exige sessão, conta Discord válida e ID na `ALLOWED_DISCORD_USER_IDS`.
+
+Operações por servidor ainda exigem que o ator seja owner, Administrator ou
+tenha ManageGuild no estado atual do Discord. Layouts melhoram UX, mas cada
+Server Action repete a autorização. Logout usa `signOut` server-side. Não há
+roles internas, registro local ou recuperação de senha.
 
 # 8. Funcionalidades
 
-## Login e dashboard
-
-Discord OAuth cria conta/sessão via PrismaAdapter. O dashboard mostra as
-ferramentas do operador. Usuários fora da allowlist não recebem conteúdo
-administrativo.
-
-## Ferramentas
-
-Templates e canais temporários podem ser ativados por usuário. Somente chaves
-presentes em `USER_TOOLS` e booleanos reais são persistidos.
-
-## Servidores conectados
-
-Um único request privado pede ao bot a lista. O bot devolve somente guilds em
-que o ator é owner, Administrator ou ManageGuild; falha de autorização em uma
-fonte externa resulta em falha segura. Remover o bot repete a autorização no
-web e no endpoint antes de `guild.leave()`.
-
-## Templates
-
-CRUD de templates/canais permanece por Server Actions, com operador e ownership.
-A aplicação ocorre pelo comando `/aplicar-template`. O reorder exige o conjunto
-exato dos canais do template, rejeita duplicatas/omissões/extras e grava ordem
-normalizada em transação.
-
-## VoiceHubs
-
-Criação, leitura, atualização, cargos e exclusão exigem operador, ownership e
-guild autorizada. Em update/delete, guild e canal vêm do registro atual, não do
-formulário. O bot repete a autorização antes de criar, renomear ou excluir o
-canal Discord.
-
-O editor recebe `permissionRoles`, `ignoredRoles` e `moderatorRoles`. Marcadores
-de presença distinguem limpeza intencional (`[]`) de campo ausente, que não
-sobrescreve o valor persistido.
-
-## Salas temporárias
-
-Ao entrar no Hub, o bot cria e move o membro para uma sala, aplica regras de
-permissão e remove a sala vazia conforme retenção. O estado operacional ainda é
-mantido em `Map`/`Set` e não sobrevive a restart.
+- **Login/logout:** OAuth Discord, sessão persistida e saída via Auth.js.
+- **Dashboard:** visão das ferramentas habilitadas para o operador.
+- **Ferramentas do usuário:** toggles centralizados para templates e VoiceHub.
+- **Servidores:** lista guilds onde bot e operador têm acesso; permite convidar
+  ou remover o bot com verificação da guild.
+- **Templates:** CRUD de templates e canais, privacidade, tipos suportados e
+  reorder completo/seguro.
+- **Aplicar template:** slash command conduz seleção de template, categoria e
+  cargos; jobs são vinculados a usuário/guild e expiram em 15 minutos.
+- **VoiceHubs:** cria/edita/remove canal Hub, roles e políticas de sala.
+- **Salas temporárias:** cria, move, renomeia e remove salas conforme presença,
+  permissões e retenção; estado não sobrevive integralmente a restart.
+- **Instalação operacional:** Compose cria banco, aplica migrations, registra
+  comandos, verifica readiness e inicia web/bot em ordem.
 
 # 9. Fluxo da Aplicação
 
 ```text
-Usuário → Discord OAuth → sessão persistida
-  → requireOperator no dashboard
-  → leitura limitada ao userId e guilds autorizadas
-  → Server Action repete operador/ownership/guild
-  → cliente privado (timeout, segredo, ator)
-  → bot repete guild authorization
-  → Discord e/ou Prisma
-  → revalidatePath/redirect → interface atualizada
+docker compose up
+  → PostgreSQL healthy → migrate deploy → registrar slash command
+  → bot conecta ao Discord e fica healthy → web fica healthy
+
+Usuário → Discord OAuth → sessão Prisma → requireOperator
+  → página/Server Action → validação + ownership + guild authorization
+  → Prisma e/ou API privada → bot reautoriza → Discord
+  → resposta segura → revalidatePath/redirect → UI
 ```
 
 # 10. Regras de Negócio
 
 - Somente IDs Discord na allowlist operam o painel.
-- Operador só atua em guild onde é owner, Administrator ou ManageGuild.
-- Conhecer um ID não concede acesso; ownership e guild são confirmados no
-  servidor.
-- Guild/canal de VoiceHub são derivados do banco em update/delete.
-- Uma ferramenta precisa existir no catálogo e estar habilitada para sua UI.
-- Reorder representa a lista completa e exata de canais do template.
-- Canais privados e salas temporárias seguem cargos/permissões configurados.
-- Bots e membros com cargos ignorados não geram salas.
-- Bitrate e limite de usuários são normalizados no bot.
-- Sala vazia segue a política de retenção configurada.
+- Operador atua apenas em guild onde tem permissão administrativa atual.
+- Conhecer ID de recurso/guild/canal não concede acesso; relações são derivadas
+  da sessão e banco.
+- Uma ferramenta precisa existir no catálogo e estar habilitada.
+- Limites: 25 templates por operador, 100 canais por template e 25 cargos por
+  lista; reorder deve representar o conjunto completo.
+- Cargos de permissão, ignorados e moderadores não podem se sobrepor.
+- VoiceHub aceita somente limites/enums/placeholders definidos no domínio;
+  dois modos de sync não podem estar ativos juntos.
+- Interações `/aplicar-template` exigem job válido, mesmo autor e mesma guild.
+- Sala vazia segue a política de retenção; bot/membros ignorados não criam sala.
 
 # 11. Componentes Críticos
 
-- `src/auth.js`: Auth.js, Discord e PrismaAdapter.
-- `src/app/dashboard/layout.js`: guarda global de operador.
-- `src/lib/auth/*`: identidade, allowlist, autorização e erros seguros.
-- `src/lib/discord/bot-api-client.js`: único cliente privado, headers, validação
-  de respostas e timeout/abort sem retries.
-- `src/lib/discord/guild-authorization.js`: autorização web por guild.
-- `src/lib/discord/guild-operations.js`: listagem e remoção testáveis.
-- `src/lib/voice-hubs/voice-hub-operations.js`: regras puras/orquestração segura.
-- `src/lib/voice-hubs/voice-hub-service.js`: dependências Prisma/Discord reais.
-- `src/lib/templates/channel-order.js`: prevenção do IDOR no reorder.
-- `src/lib/user-tools.js`: catálogo e validação de toggles.
-- `bot/guild-authorization.js`: fonte da permissão Discord atual.
-- `bot/api.js`: API privada e defesa em profundidade dos efeitos Discord.
-- `bot/voice-hubs.js`: ciclo de vida ainda efêmero das salas.
-- `prisma/schema.prisma`: contrato de persistência.
+- `src/auth.js`: Auth.js, Discord provider e PrismaAdapter.
+- `src/app/dashboard/layout.js`: guarda global do painel.
+- `src/lib/auth/*`: identidade e políticas de operador.
+- `src/lib/discord/bot-api-client.js`: URL/timeout/segredo e chamadas privadas.
+- `src/lib/discord/guild-authorization.js`: permissão por guild no web.
+- `src/lib/voice-hubs/*`: validação e orquestração segura de VoiceHub.
+- `src/lib/templates/*`: contratos e ordem de canais.
+- `bot/api.js`: fronteira privada e efeitos administrativos no Discord.
+- `bot/interactionHandler.js`: workflow do slash command.
+- `bot/voice-hubs.js`: ciclo de vida das salas temporárias.
+- `prisma/schema.prisma`: contrato persistente.
+- `compose.yaml`: topologia, dependências, healthchecks e volume.
+- `scripts/container-entrypoint.mjs`: constrói `DATABASE_URL` com encoding e
+  encaminha sinais ao processo real.
 
 # 12. Dependências Importantes
 
-- `next`, `react`, `react-dom`: aplicação web.
-- `next-auth`, `@auth/prisma-adapter`: OAuth e sessão persistida.
-- `prisma`, `@prisma/client`: PostgreSQL e migrations.
-- `discord.js`: Gateway e efeitos Discord.
-- `express`: API privada do bot.
-- `@dnd-kit/*`: drag-and-drop do reorder.
-- `tailwindcss`, `lucide-react`: interface.
-- `vitest`: testes de unidade e integração HTTP local.
-
-Não há biblioteca de validação, cache, fila ou logging estruturado. A Fase 1B
-não adicionou, removeu ou atualizou dependências.
+- `next`, `react`, `react-dom`: web full-stack.
+- `next-auth`, `@auth/prisma-adapter`: OAuth/sessão em PostgreSQL.
+- `prisma`, `@prisma/client`: schema, migrations e acesso a dados.
+- `discord.js`: Gateway, REST, comandos e efeitos Discord.
+- `express`: API privada web → bot.
+- `@dnd-kit/*`: reorder visual.
+- `tailwindcss`, `lucide-react`: sistema visual.
+- `vitest`: testes unitários/HTTP/integração opcional.
+- `dotenv`/`dotenv-cli`: desenvolvimento local; containers recebem env do
+  Compose e não dependem de arquivos copiados na imagem.
 
 # 13. Pontos de Atenção
 
-- `TemporaryVoiceChannel` ainda não é usado; restart pode deixar salas órfãs.
-- Não há compensação completa entre Discord e banco: criação Discord seguida de
-  falha Prisma pode deixar canal órfão; exclusões podem divergir parcialmente.
-- Validação ampla de todos os campos de templates/Hubs permanece para a Fase 2.
-- O comando slash e os eventos do bot não usam a allowlist do painel; seguem o
-  vínculo Discord/UserTool e regras próprias do contexto Discord.
-- `ownershipLockMinutes` continua sem implementação no engine.
-- Jobs do workflow de template não expiram e menus têm limite de 25 itens.
-- Testes não usam OAuth, PostgreSQL ou Discord reais; não há E2E completo.
-- Ainda há múltiplos `PrismaClient` no processo do bot e em código legado.
-- Ausência de rate limiting e observabilidade estruturada permanece fora do
-  escopo desta fase.
-- O cliente privado tem timeout de 5 s por padrão, configurável por
-  `BOT_API_TIMEOUT_MS` entre 100 e 30000 ms, sem retry mutável.
-- A documentação local `node_modules/next/dist/docs/` está ausente nesta
-  instalação; a versão instalada é Next 15.5.22 e fontes oficiais da versão 15
-  foram consultadas.
-- `README.md` continua sendo o template padrão do Next e não documenta a
-  instalação real.
+- `TemporaryVoiceChannel` ainda não é usado no runtime; restart pode deixar
+  salas órfãs.
+- Não há transação distribuída/compensação completa Discord ↔ PostgreSQL.
+- Jobs de template e estado de salas permanecem em `Map`/`Set`.
+- Há múltiplos `PrismaClient` no bot/legado.
+- Não há rate limiting, observabilidade estruturada, fila ou cache.
+- Seleção paginada de cargos no workflow pode substituir página anterior.
+- OAuth/Discord reais e o stack Docker não possuem E2E automatizado.
+- Docker não estava instalado no ambiente que implementou a Fase 3A: sintaxe,
+  testes, build e Prisma foram validados, mas containers/health/volume/restart
+  ainda precisam de smoke test em host Docker.
+- Tags de Node/PostgreSQL são fixas e precisam de revisão periódica de segurança.
+- Registro de comandos globais falhando bloqueia o bot por desenho.
 
 # 14. Próximos Passos
 
-1. Fase 2: validação de domínio mais ampla e retornos previsíveis das actions.
-2. Persistir e reconciliar `TemporaryVoiceChannel` após restart.
-3. Planejar consistência/compensação entre Discord e PostgreSQL.
-4. Centralizar clientes Prisma restantes e melhorar observabilidade.
-5. Cobrir Auth.js/PostgreSQL/Discord com testes de integração e E2E.
-6. Corrigir warnings de `<img>` e dívidas funcionais do workflow de templates.
-7. Implementar Docker Compose, migrations controladas, backup e atualização.
-8. Somente depois iniciar novas ferramentas.
+1. Executar smoke test documentado em Docker real (amd64 e, se disponível,
+   arm64), incluindo restart, persistência, backup e restore.
+2. Fase 2B: idempotência/compensação Discord ↔ PostgreSQL.
+3. Persistir e reconciliar salas temporárias após restart.
+4. Rodar integração PostgreSQL descartável em CI.
+5. Centralizar Prisma e melhorar logs/observabilidade.
+6. Corrigir seleção paginada e warnings de `<img>`.
+7. Só depois avaliar novas ferramentas, filas ou múltiplas instâncias.
 
 # 15. Como Trabalhar Neste Projeto
 
-- Respeite a hierarquia de `AI_RULES.md` e leia a skill aplicável.
-- Preserve Next.js + bot separado + PostgreSQL compartilhado.
-- Trate Server Actions como endpoints públicos; layout/feature toggle não são
-  autorização suficiente.
-- Reutilize `requireOperator()` e `requireGuildAuthorization()`.
-- Nunca aceite ator, owner, guild ou canal do navegador quando puder derivá-los
-  de sessão/banco.
-- Faça consultas por `resourceId + userId`; autorize a guild persistida antes
-  de efeitos.
-- Use o cliente privado central; mantenha timeout e não adicione retry a
-  mutações sem idempotência.
-- Reutilize `USER_TOOLS`; não crie chaves arbitrárias.
-- Preserve arrays ausentes em updates parciais e diferencie ausência de `[]`.
+- Leia `AI_RULES.md`, `AGENTS.md`, `PROJECT_DIRECTION.md` e a skill aplicável.
+- Preserve web, bot e banco como responsabilidades separadas.
+- Não exponha PostgreSQL nem a API do bot; no Compose use `bot`, nunca
+  `127.0.0.1`, para web → bot.
+- Reutilize autorização, validadores, contratos e catálogos existentes.
+- Nunca confie em ator/owner/guild/canal enviado pelo navegador se puder derivar.
+- Valide antes de queries/efeitos e teste ausência de efeito em negações.
 - Não altere schema sem migration incremental e autorização explícita.
-- Não exponha segredos, URLs internas, stacks ou mensagens de fornecedor.
-- Adicione testes de sucesso, negação, IDOR e ausência de efeitos antes de
-  considerar uma operação segura.
-- Consulte a documentação compatível do Next antes de alterar suas APIs; se a
-  documentação local continuar ausente, registre a fonte oficial utilizada.
+- Não adicione Redis, filas, proxy ou observabilidade sem necessidade aprovada.
+- Preserve o fluxo `postgres healthy → migrate → bot healthy → web`.
+- Use `prisma migrate deploy` em produção; nunca `db push`.
+- Não grave segredos em Dockerfile, Compose, logs ou documentação.
+- Grandes refatorações exigem proposta prévia; mudanças de Docker devem manter
+  Docker Desktop/Linux e amd64/arm64 quando as imagens oficiais suportarem.
 
 # 16. Resumo Final
 
 ```text
-Projeto: Ferramenta pessoal de automação e administração de servidores Discord.
-Arquitetura: Next.js App Router + bot discord.js/Express + PostgreSQL compartilhado.
-Escalabilidade: Baixa a média; adequada ao uso pessoal, limitada por estado em RAM.
-Complexidade: Média; efeitos entre web, banco e Discord exigem defesa em profundidade.
-Nível de organização: Médio/alto nos fluxos de segurança migrados; legado ainda existe.
-Principais riscos: estado efêmero, inconsistência Discord/banco e validação ampla pendente.
-Principais pontos fortes: autorização central, guild isolation, testes de negação e arquitetura simples.
+Projeto: painel self-hosted de automação e administração Discord
+Arquitetura: Next.js + bot discord.js/Express + PostgreSQL, orquestrados por Compose
+Escalabilidade: baixa/média; adequada a instância pessoal única
+Complexidade: média, concentrada em autorização e efeitos Discord/banco
+Nível de organização: médio/alto nos fluxos migrados e na operação Docker
+Principais riscos: estado efêmero, consistência parcial e smoke Docker pendente
+Principais pontos fortes: defesa em profundidade, validação explícita e instalação reproduzível
 ```

@@ -9,7 +9,6 @@ import {
   Check,
   ChevronDown,
   Clock3,
-  Crown,
   Info,
   LockKeyhole,
   Plus,
@@ -375,9 +374,6 @@ export default function VoiceHubEditor({ voiceHub, guild }) {
   const [keepAliveMinutes, setKeepAliveMinutes] = useState(
     voiceHub.keepAliveMinutes ?? 0
   )
-  const [ownershipLockMinutes, setOwnershipLockMinutes] = useState(
-    voiceHub.ownershipLockMinutes ?? 0
-  )
   const [permissionMode, setPermissionMode] = useState(
     voiceHub.permissionMode ?? "allow_except"
   )
@@ -401,12 +397,12 @@ export default function VoiceHubEditor({ voiceHub, guild }) {
     async function loadRoles() {
       const result = await getGuildRoles(voiceHub.id)
 
-      if (result.error) {
+      if (!result.ok) {
         setRolesError(true)
         return
       }
 
-      setRoles(result.roles)
+      setRoles(result.data.roles)
     }
 
     loadRoles()
@@ -482,6 +478,8 @@ export default function VoiceHubEditor({ voiceHub, guild }) {
                 name="name"
                 type="text"
                 defaultValue={voiceHub.name}
+                minLength={1}
+                maxLength={100}
                 required
                 className="w-full rounded-xl border border-white/10 bg-[#151518] px-4 py-3 text-sm text-white outline-none transition-colors placeholder:text-clutch-gray-light focus:border-clutch-pink focus:ring-2 focus:ring-clutch-pink/20"
               />
@@ -544,6 +542,8 @@ export default function VoiceHubEditor({ voiceHub, guild }) {
               name="tempChannelName"
               type="text"
               defaultValue={voiceHub.tempChannelName}
+              minLength={1}
+              maxLength={100}
               required
               className="w-full rounded-xl border border-white/10 bg-[#151518] px-4 py-3 text-sm text-white outline-none transition-colors focus:border-clutch-pink focus:ring-2 focus:ring-clutch-pink/20"
             />
@@ -628,33 +628,6 @@ export default function VoiceHubEditor({ voiceHub, guild }) {
               ]}
             />
 
-            <RangeField
-              icon={Crown}
-              label="Bloqueio de propriedade"
-              description="Tempo até outra pessoa poder assumir a propriedade da sala."
-              name="ownershipLockMinutes"
-              value={ownershipLockMinutes}
-              onChange={setOwnershipLockMinutes}
-              min={-1}
-              max={10}
-              step={1}
-              formatValue={(value) =>
-                value === -1
-                  ? "Nunca"
-                  : value === 0
-                    ? "Imediato"
-                    : `${value} min`
-              }
-              marks={[
-                { value: -1, label: "∞" },
-                { value: 0, label: "0" },
-                { value: 2, label: "2" },
-                { value: 4, label: "4" },
-                { value: 6, label: "6" },
-                { value: 8, label: "8" },
-                { value: 10, label: "10" },
-              ]}
-            />
           </div>
         </section>
 

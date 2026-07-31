@@ -6,19 +6,11 @@ const {
   listAuthorizedGuilds,
   normalizeDiscordId,
 } = require("./guild-authorization")
+const domainConstants = require("../domain/domain-constants.json")
+const { validateVoiceChannelBody } = require("./input-validation")
 
 function isUnknownChannelError(error) {
   return error?.code === 10003 || error?.code === "UnknownChannel"
-}
-
-function normalizeChannelName(value) {
-  if (typeof value !== "string") {
-    return null
-  }
-
-  const name = value.trim()
-
-  return name.length >= 1 && name.length <= 100 ? name : null
 }
 
 function createBotApi(client, options = {}) {
@@ -27,7 +19,13 @@ function createBotApi(client, options = {}) {
     ? options.secret
     : process.env.BOT_API_SECRET
 
-  app.use(express.json())
+  app.use(
+    express.json({
+      limit: domainConstants.limits.botApiJsonBodyMax,
+      strict: true,
+      type: "application/json",
+    })
+  )
 
   app.use((req, res, next) => {
     const providedSecret = req.headers["x-bot-secret"]
@@ -68,7 +66,19 @@ function createBotApi(client, options = {}) {
     }
   }
 
+  function rejectUnexpectedBody(req, res) {
+    const contentLength = Number(req.headers["content-length"] || 0)
+
+    if (contentLength > 0 || req.headers["transfer-encoding"]) {
+      res.status(400).json({ error: "request body not allowed" })
+      return true
+    }
+
+    return false
+  }
+
   app.get("/health", (req, res) => {
+    if (rejectUnexpectedBody(req, res)) return
     res.json({
       success: true,
       botReady: client.isReady(),
@@ -82,6 +92,7 @@ function createBotApi(client, options = {}) {
   })
 
   app.get("/guilds", async (req, res) => {
+    if (rejectUnexpectedBody(req, res)) return
     try {
       const guilds = await listAuthorizedGuilds(
         client,
@@ -95,6 +106,7 @@ function createBotApi(client, options = {}) {
   })
 
   app.get("/guilds/:guildId/access", async (req, res) => {
+    if (rejectUnexpectedBody(req, res)) return
     const authorization = await requireGuildActor(req, res)
 
     if (!authorization) {
@@ -108,6 +120,7 @@ function createBotApi(client, options = {}) {
   })
 
   app.get("/guilds/:guildId/roles", async (req, res) => {
+    if (rejectUnexpectedBody(req, res)) return
     const authorization = await requireGuildActor(req, res)
 
     if (!authorization) {
@@ -136,6 +149,18 @@ function createBotApi(client, options = {}) {
   })
 
   app.post("/guilds/:guildId/voice-channels", async (req, res) => {
+    if (!req.is("application/json")) {
+      res.status(415).json({ error: "application/json required" })
+      return
+    }
+
+    const input = validateVoiceChannelBody(req.body)
+
+    if (!input) {
+      res.status(400).json({ error: "invalid voice channel input" })
+      return
+    }
+
     const authorization = await requireGuildActor(req, res)
 
     if (!authorization) {
@@ -143,16 +168,9 @@ function createBotApi(client, options = {}) {
     }
 
     const { guild } = authorization
-    const name = normalizeChannelName(req.body?.name)
-
-    if (!name) {
-      res.status(400).json({ error: "invalid channel name" })
-      return
-    }
-
     try {
       const channel = await guild.channels.create({
-        name,
+        name: input.name,
         type: ChannelType.GuildVoice,
       })
 
@@ -168,6 +186,19 @@ function createBotApi(client, options = {}) {
   })
 
   app.patch("/guilds/:guildId/voice-channels/:channelId", async (req, res) => {
+    if (!req.is("application/json")) {
+      res.status(415).json({ error: "application/json required" })
+      return
+    }
+
+    const channelId = normalizeDiscordId(req.params.channelId)
+    const input = validateVoiceChannelBody(req.body)
+
+    if (!channelId || !input) {
+      res.status(400).json({ error: "invalid voice channel input" })
+      return
+    }
+
     const authorization = await requireGuildActor(req, res)
 
     if (!authorization) {
@@ -175,14 +206,6 @@ function createBotApi(client, options = {}) {
     }
 
     const { guild } = authorization
-    const channelId = normalizeDiscordId(req.params.channelId)
-    const name = normalizeChannelName(req.body?.name)
-
-    if (!channelId || !name) {
-      res.status(400).json({ error: "invalid voice channel input" })
-      return
-    }
-
     try {
       const channel = await guild.channels.fetch(channelId)
 
@@ -191,7 +214,7 @@ function createBotApi(client, options = {}) {
         return
       }
 
-      await channel.setName(name)
+      await channel.setName(input.name)
 
       res.json({
         success: true,
@@ -210,13 +233,7 @@ function createBotApi(client, options = {}) {
   })
 
   app.delete("/guilds/:guildId/voice-channels/:channelId", async (req, res) => {
-    const authorization = await requireGuildActor(req, res)
-
-    if (!authorization) {
-      return
-    }
-
-    const { guild } = authorization
+    if (rejectUnexpectedBody(req, res)) return
     const channelId = normalizeDiscordId(req.params.channelId)
 
     if (!channelId) {
@@ -224,6 +241,13 @@ function createBotApi(client, options = {}) {
       return
     }
 
+    const authorization = await requireGuildActor(req, res)
+
+    if (!authorization) {
+      return
+    }
+
+    const { guild } = authorization
     try {
       const channel = await guild.channels.fetch(channelId)
 
@@ -247,6 +271,7 @@ function createBotApi(client, options = {}) {
   })
 
   app.delete("/guilds/:guildId", async (req, res) => {
+    if (rejectUnexpectedBody(req, res)) return
     const authorization = await requireGuildActor(req, res)
 
     if (!authorization) {
@@ -262,15 +287,36 @@ function createBotApi(client, options = {}) {
     }
   })
 
+  app.use((error, req, res, next) => {
+    if (res.headersSent) {
+      next(error)
+      return
+    }
+
+    if (error?.type === "entity.too.large") {
+      res.status(413).json({ error: "request body too large" })
+      return
+    }
+
+    if (error instanceof SyntaxError && error?.status === 400) {
+      res.status(400).json({ error: "invalid json body" })
+      return
+    }
+
+    console.error("Falha inesperada ao processar request da API interna.")
+    res.status(500).json({ error: "unexpected request failure" })
+  })
+
   return app
 }
 
 function startBotApi(client) {
   const app = createBotApi(client)
   const port = process.env.BOT_API_PORT || 3001
+  const host = process.env.BOT_API_BIND_HOST || "127.0.0.1"
 
-  return app.listen(port, "127.0.0.1", () => {
-    console.log(`API interna do bot rodando em http://127.0.0.1:${port}`)
+  return app.listen(port, host, () => {
+    console.log(`API interna do bot escutando em ${host}:${port}`)
   })
 }
 

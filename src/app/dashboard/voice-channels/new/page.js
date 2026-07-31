@@ -57,7 +57,9 @@ export default async function NewVoiceHubPage() {
     redirect("/dashboard")
   }
 
-  const { error, guilds } = await getGuilds()
+  const guildResult = await getGuilds()
+  const guilds = guildResult.ok ? guildResult.data.guilds : []
+  const error = !guildResult.ok
 
   if (error) {
     return (

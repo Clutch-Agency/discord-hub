@@ -2,6 +2,8 @@ const { ChannelType, PermissionFlagsBits } = require("discord.js")
 const {
   normalizeBitrate,
   normalizeUserLimit,
+  renderTemporaryChannelName,
+  validateRuntimeVoiceHub,
 } = require("./voice-hub-utils")
 
 const activeTemporaryChannels = new Map()
@@ -48,13 +50,13 @@ function getTemporaryChannelIndex(hubId) {
 }
 
 function getTemporaryChannelName(hub, member) {
-  const template = String(hub.tempChannelName || "Sala de {username}")
   const index = getTemporaryChannelIndex(hub.id)
 
-  return template
-    .replace(/\{username\}/gi, member.displayName)
-    .replace(/\{index\}/gi, String(index))
-    .slice(0, 100)
+  return renderTemporaryChannelName(
+    hub.tempChannelName,
+    member.displayName,
+    index
+  )
 }
 
 function getChannelOverwrites(channel) {
@@ -247,7 +249,18 @@ function cancelTemporaryChannelDeletion(channelId) {
 
 async function createTemporaryChannel(client, hub, member, hubChannel) {
   const guild = member.guild
+  const roles = await guild.roles.fetch()
+  const availableRoleIds = new Set(roles.map((role) => role.id))
+
+  if (!validateRuntimeVoiceHub(hub, availableRoleIds)) {
+    throw new Error("Invalid persisted VoiceHub configuration")
+  }
+
   const channelName = getTemporaryChannelName(hub, member)
+
+  if (!channelName) {
+    throw new Error("Invalid temporary channel name")
+  }
   const permissionOverwrites = getPermissionOverwrites(
     hub,
     hubChannel,

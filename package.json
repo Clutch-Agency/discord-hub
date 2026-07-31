@@ -15,7 +15,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "node scripts/run-postgres-integration-tests.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",

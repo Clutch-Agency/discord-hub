@@ -23,7 +23,8 @@ export default async function EditVoiceHubPage({ params }) {
     redirect("/dashboard/voice-channels")
   }
 
-  const { guilds } = await getGuilds()
+  const guildResult = await getGuilds()
+  const guilds = guildResult.ok ? guildResult.data.guilds : []
   const guild = guilds.find((item) => item.id === voiceHub.guildId) || null
 
   return <VoiceHubEditor voiceHub={voiceHub} guild={guild} />

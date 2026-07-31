@@ -47,7 +47,9 @@ export default async function VoiceChannelsPage() {
     redirect("/dashboard")
   }
 
-  const { error, guilds } = await getGuilds()
+  const guildResult = await getGuilds()
+  const guilds = guildResult.ok ? guildResult.data.guilds : []
+  const error = !guildResult.ok
   const authorizedGuildIds = guilds.map((guild) => guild.id)
   const voiceHubs = await prisma.voiceHub.findMany({
     where: {

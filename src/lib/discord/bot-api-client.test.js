@@ -25,6 +25,35 @@ afterEach(() => {
 })
 
 describe("bot API client", () => {
+  it("aceita uma URL interna explícita e rejeita URLs ambíguas", () => {
+    expect(
+      getBotApiConfiguration({
+        BOT_API_SECRET: "secret",
+        BOT_API_PORT: "3001",
+        BOT_API_URL: "http://bot:3001/",
+      }).baseUrl
+    ).toBe("http://bot:3001")
+
+    for (const BOT_API_URL of [
+      "ftp://bot:3001",
+      "http://user:password@bot:3001",
+      "http://bot:3001/private",
+      "not-a-url",
+    ]) {
+      expect(() =>
+        getBotApiConfiguration({
+          BOT_API_SECRET: "secret",
+          BOT_API_PORT: "3001",
+          BOT_API_URL,
+        })
+      ).toThrowError(
+        expect.objectContaining({
+          code: AUTHORIZATION_ERROR_CODES.INVALID_CONFIGURATION,
+        })
+      )
+    }
+  })
+
   it("valida configuração de timeout ausente, mínima e máxima", () => {
     expect(
       getBotApiConfiguration({

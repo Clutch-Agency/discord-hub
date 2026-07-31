@@ -390,4 +390,81 @@ describe("protected guild API", () => {
     expect(response.status).toBe(404)
     expect(textChannel.setName).not.toHaveBeenCalled()
   })
+
+  it.each([
+    ["campo extra", { name: "Hub", type: 2 }, "application/json", 400],
+    ["nome vazio", { name: "   " }, "application/json", 400],
+    ["tipo incorreto", { name: 123 }, "application/json", 400],
+    ["array", ["Hub"], "application/json", 400],
+    ["content-type", { name: "Hub" }, "text/plain", 415],
+  ])("rejeita body inválido (%s) antes de consultar o Discord", async (_label, body, contentType, status) => {
+    const client = createClient()
+    const baseUrl = await startTestApi(client)
+    const response = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": contentType,
+          "x-bot-secret": SECRET,
+          "x-actor-discord-id": ACTOR_ID,
+        },
+        body: JSON.stringify(body),
+      }
+    )
+
+    expect(response.status).toBe(status)
+    expect(client.testGuild.members.fetch).not.toHaveBeenCalled()
+    expect(client.testGuild.channels.create).not.toHaveBeenCalled()
+  })
+
+  it("rejeita JSON malformado e body excessivo sem consultar o Discord", async () => {
+    const client = createClient()
+    const baseUrl = await startTestApi(client)
+    const headers = {
+      "Content-Type": "application/json",
+      "x-bot-secret": SECRET,
+      "x-actor-discord-id": ACTOR_ID,
+    }
+    const invalidJson = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels`,
+      { method: "POST", headers, body: "{" }
+    )
+    const excessiveBody = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ name: "x".repeat(17 * 1024) }),
+      }
+    )
+
+    expect(invalidJson.status).toBe(400)
+    expect(excessiveBody.status).toBe(413)
+    expect(client.testGuild.members.fetch).not.toHaveBeenCalled()
+    expect(client.testGuild.channels.create).not.toHaveBeenCalled()
+  })
+
+  it("rejeita método e body não suportados sem executar efeitos", async () => {
+    const client = createClient()
+    const baseUrl = await startTestApi(client)
+    const headers = {
+      "Content-Type": "application/json",
+      "x-bot-secret": SECRET,
+      "x-actor-discord-id": ACTOR_ID,
+    }
+    const unsupportedMethod = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels`,
+      { method: "PUT", headers, body: JSON.stringify({ name: "Hub" }) }
+    )
+    const deleteWithBody = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels/66666666666666666`,
+      { method: "DELETE", headers, body: JSON.stringify({ force: true }) }
+    )
+
+    expect(unsupportedMethod.status).toBe(404)
+    expect(deleteWithBody.status).toBe(400)
+    expect(client.testGuild.members.fetch).not.toHaveBeenCalled()
+    expect(client.testGuild.channels.fetch).not.toHaveBeenCalled()
+  })
 })

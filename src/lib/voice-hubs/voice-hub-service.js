@@ -7,6 +7,7 @@ import {
 } from "../discord/bot-api-client.js"
 import { requireGuildAuthorization } from "../discord/guild-authorization.js"
 import { prisma } from "../prisma.js"
+import { withMappedPrismaErrors } from "../prisma-errors.js"
 import {
   createVoiceHubForOperator,
   deleteVoiceHubForOperator,
@@ -24,7 +25,6 @@ export const VOICE_HUB_SELECT = Object.freeze({
   userLimit: true,
   bitrate: true,
   keepAliveMinutes: true,
-  ownershipLockMinutes: true,
   syncWithCategory: true,
   syncWithHubChannel: true,
   permissionMode: true,
@@ -50,7 +50,8 @@ export function createAuthorizedVoiceHub(guildId) {
   return createVoiceHubForOperator(guildId, {
     ...baseDependencies,
     createVoiceChannel: createVoiceChannelWithBot,
-    createVoiceHubRecord: (data) => prisma.voiceHub.create({ data }),
+    createVoiceHubRecord: (data) =>
+      withMappedPrismaErrors(() => prisma.voiceHub.create({ data })),
   })
 }
 
@@ -61,9 +62,12 @@ export function getAuthorizedVoiceHub(id) {
 export function updateAuthorizedVoiceHub(input) {
   return updateVoiceHubForOperator(input, {
     ...baseDependencies,
+    fetchGuildRoles: fetchGuildRolesWithBot,
     updateVoiceChannel: updateVoiceChannelWithBot,
     updateVoiceHubRecord: (id, userId, data) =>
-      prisma.voiceHub.updateMany({ where: { id, userId }, data }),
+      withMappedPrismaErrors(() =>
+        prisma.voiceHub.updateMany({ where: { id, userId }, data })
+      ),
   })
 }
 
@@ -72,7 +76,9 @@ export function deleteAuthorizedVoiceHub(id) {
     ...baseDependencies,
     deleteVoiceChannel: deleteVoiceChannelWithBot,
     deleteVoiceHubRecord: (voiceHubId, userId) =>
-      prisma.voiceHub.deleteMany({ where: { id: voiceHubId, userId } }),
+      withMappedPrismaErrors(() =>
+        prisma.voiceHub.deleteMany({ where: { id: voiceHubId, userId } })
+      ),
   })
 }
 

@@ -2,113 +2,126 @@
 
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { normalizeChannelName } from "@/lib/discord-utils"
 import { requireOperator } from "@/lib/auth/operator-authorization"
+import {
+  AUTHORIZATION_ERROR_CODES,
+  AuthorizationError,
+} from "@/lib/auth/authorization-error"
 import { reorderTemplateChannels } from "@/lib/templates/channel-order"
+import {
+  parseChannelFormData,
+  validateChannelId,
+  validateTemplateId,
+  validateTemplateName,
+} from "@/lib/templates/template-validation"
+import { domainConstants } from "@/lib/validation/domain-validation"
+import { withMappedPrismaErrors } from "@/lib/prisma-errors"
 
-export async function getTemplate(id) { // Receber id como argumento simples
+export async function getTemplate(id) {
   const actor = await requireOperator()
-
-  if (!id) { // Adicionar uma verificação para garantir que o id existe
-    console.error("ID do template não fornecido para getTemplate.")
-    return null
-  }
+  const templateId = validateTemplateId(id)
 
   return prisma.template.findUnique({
-    where: { id, userId: actor.userId },
+    where: { id: templateId, userId: actor.userId },
     include: { channels: { orderBy: { order: "asc" } } },
   })
 }
 
 export async function updateTemplateName(id, formData) {
   const actor = await requireOperator()
+  const templateId = validateTemplateId(id)
+  const name = validateTemplateName(formData?.get?.("name"))
 
-  const name = formData.get("name")
-  if (!name || name.trim() === "") return
+  const result = await withMappedPrismaErrors(() =>
+    prisma.template.updateMany({
+      where: { id: templateId, userId: actor.userId },
+      data: { name },
+    })
+  )
 
-  await prisma.template.updateMany({
-    where: { id, userId: actor.userId },
-    data: { name: name.trim() },
-  })
-
-  revalidatePath(`/dashboard/templates/${id}`)
-}
-
-export async function addChannel(templateId, formData) {
-  const actor = await requireOperator()
-
-  const name = formData.get("name")
-  const type = formData.get("type")
-  const isPrivate = formData.get("isPrivate") === "on"
-
-  if (!name || name.trim() === "") return
-
-  const template = await prisma.template.findUnique({
-    where: { id: templateId, userId: actor.userId },
-    include: { channels: true },
-  })
-
-  if (!template) return
-
-  const newOrder = template.channels.length > 0 ? Math.max(...template.channels.map(c => c.order)) + 1 : 0
-
-  await prisma.channel.create({
-    data: {
-      name: normalizeChannelName(name, type),
-      type,
-      isPrivate,
-      order: newOrder,
-      templateId,
-    },
-  })
+  if (result.count !== 1) {
+    throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.ACCESS_DENIED)
+  }
 
   revalidatePath(`/dashboard/templates/${templateId}`)
 }
 
+export async function addChannel(templateId, formData) {
+  const actor = await requireOperator()
+  const normalizedTemplateId = validateTemplateId(templateId)
+  const input = parseChannelFormData(formData)
+  const template = await prisma.template.findUnique({
+    where: { id: normalizedTemplateId, userId: actor.userId },
+    include: { channels: true },
+  })
+
+  if (!template) {
+    throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.ACCESS_DENIED)
+  }
+
+  if (template.channels.length >= domainConstants.limits.channelsPerTemplateMax) {
+    throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.INVALID_INPUT, {
+      publicMessage: `Cada template pode conter no máximo ${domainConstants.limits.channelsPerTemplateMax} canais.`,
+      field: "name",
+    })
+  }
+
+  const newOrder =
+    template.channels.length > 0
+      ? Math.max(...template.channels.map((channel) => channel.order)) + 1
+      : 0
+
+  await withMappedPrismaErrors(() =>
+    prisma.channel.create({
+      data: {
+        ...input,
+        order: newOrder,
+        templateId: normalizedTemplateId,
+      },
+    })
+  )
+
+  revalidatePath(`/dashboard/templates/${normalizedTemplateId}`)
+}
+
 export async function updateChannel(channelId, formData) {
   const actor = await requireOperator()
-
-  const name = formData.get("name")
-  const type = formData.get("type")
-  const isPrivate = formData.get("isPrivate") === "on"
-  const order = parseInt(formData.get("order"))
-
-  if (!name || name.trim() === "") return
-
+  const normalizedChannelId = validateChannelId(channelId)
+  const input = parseChannelFormData(formData)
   const channel = await prisma.channel.findUnique({
-    where: { id: channelId },
+    where: { id: normalizedChannelId },
     include: { template: true },
   })
 
-  if (!channel || channel.template.userId !== actor.userId) return
+  if (!channel || channel.template.userId !== actor.userId) {
+    throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.ACCESS_DENIED)
+  }
 
-  await prisma.channel.update({
-    where: { id: channelId },
-    data: {
-      name: normalizeChannelName(name, type),
-      type,
-      isPrivate,
-      order,
-    },
-  })
+  await withMappedPrismaErrors(() =>
+    prisma.channel.update({
+      where: { id: normalizedChannelId },
+      data: input,
+    })
+  )
 
   revalidatePath(`/dashboard/templates/${channel.templateId}`)
 }
 
 export async function deleteChannel(channelId) {
   const actor = await requireOperator()
-
+  const normalizedChannelId = validateChannelId(channelId)
   const channel = await prisma.channel.findUnique({
-    where: { id: channelId },
+    where: { id: normalizedChannelId },
     include: { template: true },
   })
 
-  if (!channel || channel.template.userId !== actor.userId) return
+  if (!channel || channel.template.userId !== actor.userId) {
+    throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.ACCESS_DENIED)
+  }
 
-  await prisma.channel.delete({
-    where: { id: channelId },
-  })
-
+  await withMappedPrismaErrors(() =>
+    prisma.channel.delete({ where: { id: normalizedChannelId } })
+  )
   revalidatePath(`/dashboard/templates/${channel.templateId}`)
 }
 
@@ -121,7 +134,8 @@ export async function updateChannelOrder(templateId, channels) {
         select: { id: true, channels: { select: { id: true } } },
       }),
     persistOrder: (id, orderedIds) =>
-      prisma.$transaction(async (transaction) => {
+      withMappedPrismaErrors(() =>
+        prisma.$transaction(async (transaction) => {
         for (const [order, channelId] of orderedIds.entries()) {
           const result = await transaction.channel.updateMany({
             where: { id: channelId, templateId: id },
@@ -129,10 +143,11 @@ export async function updateChannelOrder(templateId, channels) {
           })
 
           if (result.count !== 1) {
-            throw new Error("Channel order changed concurrently")
+            throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.CONFLICT)
           }
         }
-      }),
+        })
+      ),
   })
 
   revalidatePath(`/dashboard/templates/${templateId}`)

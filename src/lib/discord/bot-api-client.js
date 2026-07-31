@@ -11,10 +11,34 @@ const MAXIMUM_BOT_API_TIMEOUT_MS = 30000
 export function getBotApiConfiguration(environment = process.env) {
   const secret = environment.BOT_API_SECRET
   const configuredPort = environment.BOT_API_PORT || "3001"
+  const configuredBaseUrl =
+    environment.BOT_API_URL || `http://127.0.0.1:${configuredPort}`
   const configuredTimeout =
     environment.BOT_API_TIMEOUT_MS || String(DEFAULT_BOT_API_TIMEOUT_MS)
   const port = Number.parseInt(configuredPort, 10)
   const timeoutMs = Number.parseInt(configuredTimeout, 10)
+  let baseUrl
+
+  try {
+    const parsedBaseUrl = new URL(configuredBaseUrl)
+
+    if (
+      !["http:", "https:"].includes(parsedBaseUrl.protocol) ||
+      parsedBaseUrl.username ||
+      parsedBaseUrl.password ||
+      (parsedBaseUrl.pathname !== "/" && parsedBaseUrl.pathname !== "") ||
+      parsedBaseUrl.search ||
+      parsedBaseUrl.hash
+    ) {
+      throw new Error("invalid bot API URL")
+    }
+
+    baseUrl = parsedBaseUrl.origin
+  } catch {
+    throw new AuthorizationError(
+      AUTHORIZATION_ERROR_CODES.INVALID_CONFIGURATION
+    )
+  }
 
   if (
     typeof secret !== "string" ||
@@ -32,7 +56,7 @@ export function getBotApiConfiguration(environment = process.env) {
   }
 
   return {
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl,
     secret,
     timeoutMs,
   }

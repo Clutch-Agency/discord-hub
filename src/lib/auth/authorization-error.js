@@ -5,6 +5,9 @@ export const AUTHORIZATION_ERROR_CODES = Object.freeze({
   INVALID_CONFIGURATION: "INVALID_CONFIGURATION",
   GUILD_ACCESS_DENIED: "GUILD_ACCESS_DENIED",
   AUTHORIZATION_UNAVAILABLE: "AUTHORIZATION_UNAVAILABLE",
+  NOT_FOUND: "NOT_FOUND",
+  CONFLICT: "CONFLICT",
+  PERSISTENCE_UNAVAILABLE: "PERSISTENCE_UNAVAILABLE",
   UNEXPECTED: "UNEXPECTED",
 })
 
@@ -21,13 +24,22 @@ const PUBLIC_MESSAGES = Object.freeze({
     "Você não tem permissão para operar neste servidor.",
   [AUTHORIZATION_ERROR_CODES.AUTHORIZATION_UNAVAILABLE]:
     "Não foi possível validar sua permissão neste momento.",
+  [AUTHORIZATION_ERROR_CODES.NOT_FOUND]:
+    "O recurso solicitado não foi encontrado.",
+  [AUTHORIZATION_ERROR_CODES.CONFLICT]:
+    "Os dados foram alterados por outra operação.",
+  [AUTHORIZATION_ERROR_CODES.PERSISTENCE_UNAVAILABLE]:
+    "Não foi possível salvar os dados neste momento.",
   [AUTHORIZATION_ERROR_CODES.UNEXPECTED]:
     "Não foi possível concluir a autorização.",
 })
 
 export class AuthorizationError extends Error {
   constructor(code, options = {}) {
-    const publicMessage = PUBLIC_MESSAGES[code] || PUBLIC_MESSAGES.UNEXPECTED
+    const publicMessage =
+      options.publicMessage ||
+      PUBLIC_MESSAGES[code] ||
+      PUBLIC_MESSAGES.UNEXPECTED
 
     super(publicMessage, options.cause ? { cause: options.cause } : undefined)
 
@@ -36,6 +48,7 @@ export class AuthorizationError extends Error {
       ? code
       : AUTHORIZATION_ERROR_CODES.UNEXPECTED
     this.publicMessage = publicMessage
+    this.field = typeof options.field === "string" ? options.field : null
   }
 }
 
@@ -49,6 +62,7 @@ export function toAuthorizationFailure(error) {
       error: true,
       code: error.code,
       message: error.publicMessage,
+      ...(error.field ? { field: error.field } : {}),
     }
   }
 
@@ -58,4 +72,3 @@ export function toAuthorizationFailure(error) {
     message: PUBLIC_MESSAGES[AUTHORIZATION_ERROR_CODES.UNEXPECTED],
   }
 }
-

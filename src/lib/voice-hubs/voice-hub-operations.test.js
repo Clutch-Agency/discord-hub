@@ -47,7 +47,6 @@ function validUpdate(overrides = {}) {
     userLimit: 10,
     bitrateKbps: 64,
     keepAliveMinutes: 2,
-    ownershipLockMinutes: -1,
     syncWithCategory: false,
     syncWithHubChannel: true,
     permissionMode: "allow_except",
@@ -203,12 +202,10 @@ describe("VoiceHub operations", () => {
     const updateVoiceHubRecord = vi.fn(async () => ({ count: 1 }))
 
     await updateVoiceHubForOperator(
-      validUpdate({
-        guildId: "99999999999999999",
-        channelId: "88888888888888888",
-      }),
+      validUpdate(),
       baseDependencies({
         requireGuildAuthorization,
+        fetchGuildRoles: async () => [{ id: ROLE_ID }],
         updateVoiceChannel,
         updateVoiceHubRecord,
       })
@@ -296,13 +293,37 @@ describe("VoiceHub operations", () => {
   })
 
   it("rejeita campos manipulados antes de efeitos mutáveis", async () => {
+    const findOwnedVoiceHub = vi.fn()
     const updateVoiceChannel = vi.fn()
     const updateVoiceHubRecord = vi.fn()
 
     await expect(
       updateVoiceHubForOperator(
         validUpdate({ userLimit: 100 }),
-        baseDependencies({ updateVoiceChannel, updateVoiceHubRecord })
+        baseDependencies({
+          findOwnedVoiceHub,
+          updateVoiceChannel,
+          updateVoiceHubRecord,
+        })
+      )
+    ).rejects.toMatchObject({ code: AUTHORIZATION_ERROR_CODES.INVALID_INPUT })
+    expect(findOwnedVoiceHub).not.toHaveBeenCalled()
+    expect(updateVoiceChannel).not.toHaveBeenCalled()
+    expect(updateVoiceHubRecord).not.toHaveBeenCalled()
+  })
+
+  it("rejeita cargo externo antes de renomear ou persistir", async () => {
+    const updateVoiceChannel = vi.fn()
+    const updateVoiceHubRecord = vi.fn()
+
+    await expect(
+      updateVoiceHubForOperator(
+        validUpdate(),
+        baseDependencies({
+          fetchGuildRoles: async () => [],
+          updateVoiceChannel,
+          updateVoiceHubRecord,
+        })
       )
     ).rejects.toMatchObject({ code: AUTHORIZATION_ERROR_CODES.INVALID_INPUT })
     expect(updateVoiceChannel).not.toHaveBeenCalled()

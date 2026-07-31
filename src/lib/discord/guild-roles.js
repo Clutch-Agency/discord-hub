@@ -1,7 +1,5 @@
-import {
-  isAuthorizationError,
-  toAuthorizationFailure,
-} from "../auth/authorization-error.js"
+import { isAuthorizationError } from "../auth/authorization-error.js"
+import { actionFailure, actionSuccess } from "../contracts/action-result.js"
 
 export async function loadGuildRolesForOperator(guildId, dependencies) {
   const actor = await dependencies.requireOperator()
@@ -17,18 +15,12 @@ export async function getGuildRolesResult(guildId, dependencies) {
   try {
     const roles = await loadGuildRolesForOperator(guildId, dependencies)
 
-    return {
-      error: false,
-      roles,
-    }
+    return actionSuccess({ roles })
   } catch (error) {
     if (!isAuthorizationError(error) && dependencies.onUnexpectedError) {
       dependencies.onUnexpectedError()
     }
 
-    return {
-      ...toAuthorizationFailure(error),
-      roles: [],
-    }
+    return actionFailure(error)
   }
 }

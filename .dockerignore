@@ -1,0 +1,13 @@
+.git
+.gitignore
+.next
+node_modules
+coverage
+.env
+.env.*
+!.env.example
+*.log
+AI_HANDOFF.md
+PROJECT_REPORT.md
+TALK_LOG.md
+

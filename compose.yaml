@@ -1,0 +1,140 @@
+x-database-environment: &database-environment
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${POSTGRES_DB:-clutch_hub}
+  POSTGRES_USER: ${POSTGRES_USER:-clutch_hub}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no arquivo .env}
+
+x-worker-image: &worker-image
+  image: discord-hub-worker:local
+  build:
+    context: .
+    target: worker
+
+services:
+  postgres:
+    image: postgres:17.10-alpine3.23
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clutch_hub}
+      POSTGRES_USER: ${POSTGRES_USER:-clutch_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD no arquivo .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - app
+
+  migrate:
+    <<: *worker-image
+    restart: "no"
+    command:
+      - node
+      - scripts/container-entrypoint.mjs
+      - --database
+      - node
+      - node_modules/prisma/build/index.js
+      - migrate
+      - deploy
+    environment:
+      <<: *database-environment
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - app
+
+  discord-commands:
+    <<: *worker-image
+    restart: "no"
+    command: ["node", "scripts/container-entrypoint.mjs", "node", "bot/deploy-commands.js"]
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:?Configure DISCORD_BOT_TOKEN no arquivo .env}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:?Configure DISCORD_CLIENT_ID no arquivo .env}
+    networks:
+      - app
+
+  bot:
+    <<: *worker-image
+    restart: unless-stopped
+    init: true
+    environment:
+      <<: *database-environment
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN:?Configure DISCORD_BOT_TOKEN no arquivo .env}
+      BOT_API_SECRET: ${BOT_API_SECRET:?Configure BOT_API_SECRET no arquivo .env}
+      BOT_API_BIND_HOST: 0.0.0.0
+      BOT_API_PORT: "3001"
+    expose:
+      - "3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      discord-commands:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3001/health',{headers:{'x-bot-secret':process.env.BOT_API_SECRET}}).then(r=>r.json().then(body=>{if(!r.ok||body.botReady!==true)process.exit(1)})).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    stop_grace_period: 20s
+    networks:
+      - app
+
+  web:
+    image: discord-hub-web:local
+    build:
+      context: .
+      target: web
+    restart: unless-stopped
+    init: true
+    environment:
+      <<: *database-environment
+      AUTH_SECRET: ${AUTH_SECRET:?Configure AUTH_SECRET no arquivo .env}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      AUTH_TRUST_HOST: "true"
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:?Configure DISCORD_CLIENT_ID no arquivo .env}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:?Configure DISCORD_CLIENT_SECRET no arquivo .env}
+      DISCORD_BOT_INVITE_URL: ${DISCORD_BOT_INVITE_URL:-}
+      ALLOWED_DISCORD_USER_IDS: ${ALLOWED_DISCORD_USER_IDS:?Configure ALLOWED_DISCORD_USER_IDS no arquivo .env}
+      BOT_API_SECRET: ${BOT_API_SECRET:?Configure BOT_API_SECRET no arquivo .env}
+      BOT_API_URL: http://bot:3001
+      BOT_API_PORT: "3001"
+      BOT_API_TIMEOUT_MS: ${BOT_API_TIMEOUT_MS:-5000}
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      bot:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    stop_grace_period: 20s
+    networks:
+      - app
+
+volumes:
+  postgres_data:
+
+networks:
+  app:
+    driver: bridge
+

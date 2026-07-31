@@ -1,0 +1,26 @@
+{
+  "channelTypes": ["TEXT", "VOICE", "FORUM", "ANNOUNCEMENT"],
+  "permissionModes": ["allow_except", "deny_except"],
+  "toolKeys": ["templates", "voice-channels"],
+  "retentionMinutes": [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+  "limits": {
+    "templateNameMin": 1,
+    "templateNameMax": 100,
+    "templatesPerUserMax": 25,
+    "channelNameMin": 1,
+    "channelNameMax": 100,
+    "channelsPerTemplateMax": 100,
+    "voiceHubNameMin": 1,
+    "voiceHubNameMax": 100,
+    "temporaryChannelTemplateMin": 1,
+    "temporaryChannelTemplateMax": 100,
+    "userLimitMin": 0,
+    "userLimitMax": 99,
+    "bitrateKbpsMin": 8,
+    "bitrateKbpsMax": 96,
+    "roleIdsPerListMax": 25,
+    "discordSelectOptionsMax": 25,
+    "discordModalShortTextMax": 100,
+    "botApiJsonBodyMax": "16kb"
+  }
+}

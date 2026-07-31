@@ -8,6 +8,7 @@ import {
   listGuildsForOperator,
   removeGuildForOperator,
 } from "./guild-operations.js"
+import { ACTION_RESULT_CODES } from "../contracts/action-result.js"
 
 const ACTOR = Object.freeze({
   userId: "internal-user",
@@ -60,9 +61,9 @@ describe("guild operations", () => {
       },
     })
 
-    expect(result.guilds).toEqual([])
+    expect(result.ok).toBe(false)
     expect(result.code).toBe(
-      AUTHORIZATION_ERROR_CODES.AUTHORIZATION_UNAVAILABLE
+      ACTION_RESULT_CODES.EXTERNAL_UNAVAILABLE
     )
     expect(JSON.stringify(result)).not.toContain("token")
   })

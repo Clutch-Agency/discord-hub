@@ -3,112 +3,25 @@ import {
   AuthorizationError,
 } from "../auth/authorization-error.js"
 import { normalizeDiscordId } from "../discord/discord-identifiers.js"
+import {
+  assertRolesBelongToGuild,
+  validateRoleListConflicts,
+  validateVoiceHubId,
+  validateVoiceHubName,
+  validateVoiceHubUpdateInput,
+} from "./voice-hub-validation.js"
 
-const INTERNAL_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/
-const PERMISSION_MODES = new Set(["allow_except", "deny_except"])
+const ROLE_FIELDS = ["permissionRoles", "ignoredRoles", "moderatorRoles"]
 
-function invalidInput() {
-  throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.INVALID_INPUT)
-}
-
-function normalizeInternalId(value) {
-  if (typeof value !== "string") {
-    invalidInput()
-  }
-
-  const normalized = value.trim()
-
-  if (!INTERNAL_ID_PATTERN.test(normalized)) {
-    invalidInput()
-  }
-
-  return normalized
-}
-
-function normalizeText(value, maximumLength = 100) {
-  if (typeof value !== "string") {
-    invalidInput()
-  }
-
-  const normalized = value.trim()
-
-  if (normalized.length < 1 || normalized.length > maximumLength) {
-    invalidInput()
-  }
-
-  return normalized
-}
-
-function normalizeInteger(value, minimum, maximum) {
-  if (!Number.isInteger(value) || value < minimum || value > maximum) {
-    invalidInput()
-  }
-
-  return value
-}
-
-function normalizeRoleIds(values) {
-  if (!Array.isArray(values) || values.length > 250) {
-    invalidInput()
-  }
-
-  const normalized = values.map((value) => normalizeDiscordId(value))
-
-  if (normalized.some((value) => !value)) {
-    invalidInput()
-  }
-
-  return [...new Set(normalized)]
-}
-
-function requireBoolean(value) {
-  if (typeof value !== "boolean") {
-    invalidInput()
-  }
-
-  return value
-}
-
-export async function createVoiceHubForOperator(guildId, dependencies) {
-  const actor = await dependencies.requireOperator()
-  const normalizedGuildId = normalizeDiscordId(guildId)
-
-  if (!normalizedGuildId) {
-    invalidInput()
-  }
-
-  const authorizedGuild = await dependencies.requireGuildAuthorization(
-    actor,
-    normalizedGuildId
-  )
-  const channel = await dependencies.createVoiceChannel(
-    authorizedGuild,
-    "Hub de Voz Temporário"
-  )
-
-  return dependencies.createVoiceHubRecord({
-    userId: actor.userId,
-    guildId: authorizedGuild.guildId,
-    channelId: channel.channelId,
-    name: channel.channelName,
-    tempChannelName: "{username}'s Room",
-    userLimit: 0,
-    bitrate: 64000,
-    keepAliveMinutes: -1,
-    ownershipLockMinutes: -1,
-    syncWithCategory: false,
-    syncWithHubChannel: false,
-    permissionMode: "allow_except",
+function invalidGuildId() {
+  throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.INVALID_INPUT, {
+    publicMessage: "O servidor selecionado é inválido.",
+    field: "guildId",
   })
 }
 
-export async function loadVoiceHubForOperator(id, dependencies) {
-  const actor = await dependencies.requireOperator()
-  const normalizedId = normalizeInternalId(id)
-  const voiceHub = await dependencies.findOwnedVoiceHub(
-    normalizedId,
-    actor.userId
-  )
+async function findVoiceHubContext(id, actor, dependencies) {
+  const voiceHub = await dependencies.findOwnedVoiceHub(id, actor.userId)
 
   if (!voiceHub) {
     throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.ACCESS_DENIED)
@@ -122,47 +35,69 @@ export async function loadVoiceHubForOperator(id, dependencies) {
   return Object.freeze({ actor, authorizedGuild, voiceHub })
 }
 
+export async function createVoiceHubForOperator(guildId, dependencies) {
+  const actor = await dependencies.requireOperator()
+  const normalizedGuildId = normalizeDiscordId(guildId)
+
+  if (!normalizedGuildId) {
+    invalidGuildId()
+  }
+
+  const name = validateVoiceHubName("Hub de Voz Temporário")
+  const authorizedGuild = await dependencies.requireGuildAuthorization(
+    actor,
+    normalizedGuildId
+  )
+  const channel = await dependencies.createVoiceChannel(authorizedGuild, name)
+
+  return dependencies.createVoiceHubRecord({
+    userId: actor.userId,
+    guildId: authorizedGuild.guildId,
+    channelId: channel.channelId,
+    name: channel.channelName,
+    tempChannelName: "Sala de {username}",
+    userLimit: 0,
+    bitrate: 64000,
+    keepAliveMinutes: -1,
+    syncWithCategory: false,
+    syncWithHubChannel: false,
+    permissionMode: "allow_except",
+  })
+}
+
+export async function loadVoiceHubForOperator(id, dependencies) {
+  const actor = await dependencies.requireOperator()
+  const normalizedId = validateVoiceHubId(id)
+
+  return findVoiceHubContext(normalizedId, actor, dependencies)
+}
+
 export async function updateVoiceHubForOperator(input, dependencies) {
-  const context = await loadVoiceHubForOperator(input?.id, dependencies)
-  const { actor, authorizedGuild, voiceHub } = context
-  const name = normalizeText(input.name)
-  const tempChannelName = normalizeText(input.tempChannelName)
-  const syncWithCategory = requireBoolean(input.syncWithCategory)
-  const requestedHubSync = requireBoolean(input.syncWithHubChannel)
-  const permissionMode = PERMISSION_MODES.has(input.permissionMode)
-    ? input.permissionMode
-    : invalidInput()
-  const data = {
-    name,
-    tempChannelName,
-    userLimit: normalizeInteger(input.userLimit, 0, 99),
-    bitrate: normalizeInteger(input.bitrateKbps, 8, 96) * 1000,
-    keepAliveMinutes: normalizeInteger(input.keepAliveMinutes, -1, 10),
-    ownershipLockMinutes: normalizeInteger(
-      input.ownershipLockMinutes,
-      -1,
-      10
-    ),
-    syncWithCategory,
-    syncWithHubChannel: !syncWithCategory && requestedHubSync,
-    permissionMode,
+  const actor = await dependencies.requireOperator()
+  const validated = validateVoiceHubUpdateInput(input)
+  const context = await findVoiceHubContext(validated.id, actor, dependencies)
+  const { authorizedGuild, voiceHub } = context
+  const combinedRoleLists = {}
+
+  for (const field of ROLE_FIELDS) {
+    combinedRoleLists[field] =
+      validated[field] === undefined ? voiceHub[field] || [] : validated[field]
   }
 
-  for (const field of [
-    "permissionRoles",
-    "ignoredRoles",
-    "moderatorRoles",
-  ]) {
-    if (input[field] !== undefined) {
-      data[field] = normalizeRoleIds(input[field])
-    }
+  validateRoleListConflicts(combinedRoleLists)
+
+  if (ROLE_FIELDS.some((field) => validated[field]?.length > 0)) {
+    const availableRoles = await dependencies.fetchGuildRoles(authorizedGuild)
+    assertRolesBelongToGuild(validated, availableRoles)
   }
 
-  if (voiceHub.name !== name) {
+  const { id, ...data } = validated
+
+  if (voiceHub.name !== data.name) {
     await dependencies.updateVoiceChannel(
       authorizedGuild,
       voiceHub.channelId,
-      name
+      data.name
     )
   }
 
@@ -185,10 +120,7 @@ export async function deleteVoiceHubForOperator(id, dependencies) {
   const { actor, authorizedGuild, voiceHub } =
     await loadVoiceHubForOperator(id, dependencies)
 
-  await dependencies.deleteVoiceChannel(
-    authorizedGuild,
-    voiceHub.channelId
-  )
+  await dependencies.deleteVoiceChannel(authorizedGuild, voiceHub.channelId)
 
   const result = await dependencies.deleteVoiceHubRecord(
     voiceHub.id,
