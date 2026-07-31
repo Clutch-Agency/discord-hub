@@ -1,4 +1,3 @@
-import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import Link from "next/link"
 import {
@@ -15,6 +14,7 @@ import { isToolEnabled } from "@/lib/user-tools"
 import { getGuilds } from "@/app/dashboard/servers/actions"
 import { createVoiceHub } from "./actions"
 import ServerSelector from "./ServerSelector"
+import { requireOperator } from "@/lib/auth/operator-authorization"
 
 function NoticeState({ error, title, description, children }) {
   return (
@@ -49,13 +49,9 @@ function NoticeState({ error, title, description, children }) {
 }
 
 export default async function NewVoiceHubPage() {
-  const session = await auth()
+  const actor = await requireOperator()
 
-  if (!session) {
-    redirect("/")
-  }
-
-  const enabled = await isToolEnabled(session.user.id, "voice-channels")
+  const enabled = await isToolEnabled(actor.userId, "voice-channels")
 
   if (!enabled) {
     redirect("/dashboard")

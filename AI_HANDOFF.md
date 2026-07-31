@@ -1,28 +1,27 @@
-# AI HANDOFF — Fase 1A: Fundação de Autenticação e Autorização
+# AI HANDOFF — Fase 1B: Aplicação da Segurança nas Operações Existentes
 
-## 1. Status da fase
+## 1. Status
 
 **Concluída em 31/07/2026.**
 
-A fase criou a fundação central de autenticação, allowlist de operadores,
-autorização por guild e erros previsíveis. Somente o carregamento de cargos de
-uma guild foi migrado como fluxo piloto. A aplicação completa nas demais
-operações permanece para a Fase 1B.
+A fundação da Fase 1A foi aplicada à área administrativa, guilds, templates,
+toggles e CRUD de VoiceHub. IDOR, perda silenciosa de cargos, endpoints mutáveis
+sem ator e ausência de timeout foram corrigidos dentro do escopo definido.
 
 ## 2. Objetivo executado
 
-- mapear o modelo anterior de autenticação e autorização;
-- definir uma identidade mínima obtida exclusivamente no servidor;
-- implementar `ALLOWED_DISCORD_USER_IDS` como fonte única da allowlist;
-- compor autenticação e autorização de operador;
-- confirmar autorização por guild no estado atual do Discord;
-- criar categorias de erro e mensagens públicas seguras;
-- validar IDs e configurações em runtime;
-- aplicar a fundação em um único fluxo administrativo somente leitura;
-- adicionar testes permitidos, negados, inválidos e de indisponibilidade;
-- preservar schema, migrations, dependências e demais regras de negócio.
+- bloquear o dashboard para usuários fora da allowlist;
+- filtrar guilds pelo estado atual de owner/Administrator/ManageGuild;
+- proteger remoção do bot e efeitos de VoiceHub no web e no bot;
+- derivar guild/canal de recursos persistidos;
+- corrigir o IDOR de reorder com conjunto exato e transação;
+- preservar os três arrays de cargos do Hub;
+- limitar `toolKey` ao catálogo oficial e exigir boolean real;
+- centralizar timeout/abort das chamadas privadas;
+- remover detalhes internos das respostas HTTP alteradas;
+- comprovar caminhos permitidos, negados e ausência de efeitos após negação.
 
-## 3. Documentação e skills lidas
+## 3. Documentos e skills lidos
 
 Na ordem exigida:
 
@@ -31,7 +30,8 @@ Na ordem exigida:
 3. `AI_RULES.md`;
 4. `AGENTS.md`;
 5. `AI_CONTEXT.md`;
-6. `PROJECT_REPORT.md`;
+6. `PROJECT_REPORT.md` integralmente, em faixas porque a primeira saída foi
+   truncada;
 7. `README.md`;
 8. `AI_HANDOFF.md` anterior.
 
@@ -39,348 +39,235 @@ Skill obrigatória lida integralmente:
 
 - `.ai/skills/backend-architect/SKILL.md`.
 
-Também foram consultadas fontes oficiais compatíveis:
+Todos os módulos 1A e testes relacionados foram relidos. A documentação local
+`node_modules/next/dist/docs/` está ausente. Foram consultadas as fontes oficiais
+do Next.js 15 sobre segurança de dados/Server Actions, autenticação e erros de
+renderização dinâmica. A versão instalada foi confirmada como Next 15.5.22.
 
-- segurança de dados e Server Actions do Next.js 15:
-  <https://nextjs.org/docs/15/app/guides/data-security>;
-- autenticação no App Router:
-  <https://nextjs.org/docs/app/guides/authentication>;
-- configuração básica Auth.js e `auth()`:
-  <https://authjs.dev/>;
-- `GuildMemberManager.fetch` no discord.js 14.27.0:
-  <https://discord.js.org/docs/packages/discord.js/14.27.0/GuildMemberManager:Class>;
-- flags `Administrator` e `ManageGuild` no discord.js 14.27.0:
-  <https://discord.js.org/docs/packages/discord.js/14.27.0/PermissionFlagsBits:Variable>;
-- permissões oficiais do Discord:
-  <https://docs.discord.com/developers/topics/permissions>.
+## 4. Diagnóstico anterior
 
-A documentação local `node_modules/next/dist/docs/` continua ausente. Nenhuma
-API Next nova foi introduzida; a documentação oficial da versão 15 foi usada
-para confirmar que Server Actions devem ser tratadas como endpoints públicos.
+- layout exigia apenas uma sessão Discord;
+- `getGuilds` retornava todo o cache do bot;
+- remoção de guild e endpoints mutáveis exigiam somente `x-bot-secret`;
+- create/update/delete de VoiceHub confiavam em IDs do fluxo web e não
+  reconfirmavam a guild;
+- o detalhe do Hub não selecionava arrays de cargos;
+- `updateChannelOrder` atualizava qualquer ID submetido;
+- `toggleTool` aceitava chave arbitrária e tipos não validados;
+- cada action fazia `fetch` direto ao bot, sem timeout;
+- endpoints retornavam `error.message` do Discord.
 
-## 4. Diagnóstico do modelo anterior
+## 5. Proteção global implementada
 
-### Sessão e identidade
+`src/app/dashboard/layout.js` agora chama `requireOperator()` antes de obter e
+renderizar conteúdo administrativo. O segmento foi marcado `force-dynamic`,
+pois depende sempre de cookie/sessão e não pode ser prerenderizado.
 
-- `src/auth.js` usa Auth.js/NextAuth 5 beta com Discord, PrismaAdapter e sessão
-  em banco.
-- O callback de sessão grava o CUID interno de `User` em `session.user.id`.
-- O ID Discord não fica diretamente na sessão.
-- A associação confiável está em `Account`, por
-  `provider="discord"` + `providerAccountId`.
-- Layouts, páginas e actions repetiam `auth()` sem uma função central.
+As Server Actions administrativas de templates, toggles, guilds e VoiceHub
+repetem a autorização; o layout não é usado como única barreira.
 
-### Guilds e permissões
+## 6. Comportamento para usuário negado
 
-- `getGuilds` devolvia todas as guilds do cache do bot.
-- As operações web enviavam `guildId` recebido do cliente para a API privada.
-- A API exigia apenas `BOT_API_SECRET`; não recebia identidade do ator.
-- Nenhuma operação da API verificava owner, `Administrator` ou `ManageGuild`.
-- `getGuildRoles`, `createVoiceHub` e `removeGuild` eram exemplos diretos de
-  acesso horizontal possível.
+- sem sessão: redirecionamento para `/`;
+- fora da allowlist: `notFound()` antes de renderizar o dashboard;
+- allowlist ausente/vazia/inválida: mesmo estado seguro, sem conteúdo;
+- falha da identidade: mesmo estado seguro;
+- ações diretas: `AuthorizationError` previsível antes de consultas ou efeitos.
 
-### Duplicação e confiança no cliente
+Allowlist, valores configurados e detalhes internos não são serializados.
 
-- `auth()` e tratamento de ausência de sessão estavam espalhados pelas actions.
-- `session.user.id` era usado diretamente sem resolver uma identidade Discord
-  mínima compartilhada.
-- `guildId`, IDs de recurso, `toolKey`, enums, números e arrays ainda possuem
-  validação inconsistente.
-- `updateChannelOrder` continua com IDOR porque aceita IDs de canais fora do
-  template validado.
+## 7. Filtragem de guilds
 
-### Variáveis relevantes
-
-- `AUTH_SECRET`, `DISCORD_CLIENT_ID` e `DISCORD_CLIENT_SECRET`: autenticação;
-- `DATABASE_URL`: persistência de conta e sessão;
-- `BOT_API_SECRET` e `BOT_API_PORT`: canal privado web → bot;
-- `ALLOWED_DISCORD_USER_IDS`: nova configuração central de operadores.
-
-Valores reais não foram lidos, reproduzidos ou enviados a serviços externos.
-
-## 5. Modelo de autenticação implementado
-
-Função central:
+Fluxo atual:
 
 ```text
-requireAuthenticatedActor()
+getGuilds
+→ requireOperator
+→ GET privado /guilds com x-actor-discord-id
+→ listAuthorizedGuilds no processo do bot
+→ authorizeGuildActor para cada guild do cache
+→ somente owner/Administrator/ManageGuild
 ```
 
-Localização:
+Existe um único request HTTP web→bot. Guild negada é omitida. Qualquer falha
+inesperada da fonte Discord faz a lista inteira falhar de forma segura; não há
+retorno parcial ambíguo nem cache novo.
 
-- `src/lib/auth/authenticated-actor.js`.
+## 8. Proteção de remoção do bot
 
-Fluxo:
+`removeGuild` exige operador, valida snowflake, chama
+`requireGuildAuthorization()` e envia o contexto autorizado ao cliente privado.
+`DELETE /guilds/:guildId` exige segredo + ator e repete `authorizeGuildActor()`
+antes de `guild.leave()`. Guild ausente, ator ausente, ID inválido, permissão
+revogada ou Discord indisponível não executam `leave()`.
 
-1. chama `auth()` no servidor;
-2. exige `session.user.id` não vazio;
-3. consulta a conta `provider="discord"` do mesmo usuário interno;
-4. valida `Account.providerAccountId` como snowflake Discord;
-5. retorna somente:
+A limpeza de configurações da guild continua fora do escopo e deve ser tratada
+na fase de consistência/reconciliação.
 
-```js
-{
-  userId,
-  discordUserId,
-}
-```
+## 9. Proteção de criação de Hub
 
-A função não recebe `userId` do cliente. Dependências de sessão e conta podem
-ser injetadas exclusivamente para testes. Falha de sessão/identidade produz
-`UNAUTHENTICATED`; falha da fonte produz `AUTHORIZATION_UNAVAILABLE`.
+`createVoiceHubForOperator()` executa operador → guild válida → autorização web
+→ POST privado autorizado → persistência com `actor.userId` e guild confirmada.
+O endpoint repete a autorização antes de criar o canal. Nenhum ator é aceito do
+formulário.
 
-## 6. Formato e regra da allowlist
+Falha Prisma posterior à criação Discord ainda pode deixar canal órfão; a
+compensação completa foi explicitamente adiada pelo escopo.
 
-Fonte única:
+## 10. Proteção de edição de Hub
 
-```text
-ALLOWED_DISCORD_USER_IDS
-```
+Leitura e edição usam `getAuthorizedVoiceHub()`:
 
-Módulo:
+1. exige operador;
+2. valida o ID interno;
+3. busca `id + actor.userId`;
+4. deriva `guildId` do registro;
+5. autoriza a guild;
+6. passa somente a projeção necessária ao editor.
 
-- `src/lib/auth/operator-allowlist.js`.
+`getGuildRoles` agora recebe o ID do Hub, repete esse fluxo e não aceita mais
+uma `guildId` arbitrária do navegador.
 
-Regras:
+## 11. Proteção de exclusão de Hub
 
-- IDs Discord em lista textual;
-- separadores aceitos: vírgula, ponto e vírgula e whitespace;
-- espaços e entradas vazias são removidos;
-- duplicatas são eliminadas;
-- cada item precisa ser um snowflake decimal de 17 a 20 dígitos, sem zero
-  inicial;
-- variável ausente, lista vazia ou qualquer item inválido torna toda a
-  configuração inválida;
-- configuração inválida nunca concede acesso;
-- a lista completa nunca é retornada ao cliente ou registrada.
+Delete busca o Hub por owner, deriva guild/canal do banco, autoriza a guild,
+chama o endpoint protegido e só depois executa `deleteMany(id + userId)`. Canal
+já ausente é tratado como estado removível; guild/ator negados não permitem
+apagar o registro.
 
-`.env.example` passou a ser versionável e contém apenas o nome da variável, sem
-valor real. `.gitignore` continua ignorando todos os demais `.env*`.
+## 12. Endpoints mutáveis protegidos
 
-## 7. Modelo de autorização de operador
+Rotas auditadas:
 
-Função central:
+- `POST /guilds/:guildId/voice-channels`;
+- `PATCH /guilds/:guildId/voice-channels/:channelId`;
+- `DELETE /guilds/:guildId/voice-channels/:channelId`;
+- `DELETE /guilds/:guildId`.
 
-```text
-requireOperator()
-```
+Todas exigem segredo e ator, validam IDs, repetem owner/Administrator/ManageGuild
+e só então executam o efeito. PATCH/DELETE buscam o canal pela coleção da guild
+autorizada e exigem `ChannelType.GuildVoice`, impedindo canal externo ou tipo
+incompatível.
 
-Localização:
+## 13. Correção do IDOR
 
-- `src/lib/auth/operator-authorization.js`.
+`reorderTemplateChannels()`:
 
-Ela executa `requireAuthenticatedActor()`, carrega a allowlist somente no
-servidor e exige a presença de `actor.discordUserId`. Em sucesso, devolve o ator
-mínimo acrescido de `isOperator: true`.
+- exige operador e template de `actor.userId`;
+- valida IDs e duplicatas;
+- carrega no servidor o conjunto esperado;
+- exige igualdade exata, sem omissões ou extras;
+- ignora qualquer `order` enviado e usa a posição do array;
+- atualiza cada canal com `id + templateId`;
+- usa transação interativa e falha se uma atualização não afetar exatamente um
+  registro.
 
-Distinções:
+Recurso alheio/inexistente não é consultado separadamente nem enumerado.
 
-- sem sessão/identidade: `UNAUTHENTICATED`;
-- autenticado fora da lista: `ACCESS_DENIED`;
-- lista ausente/vazia/malformada: `INVALID_CONFIGURATION`;
-- falha da fonte de identidade: `AUTHORIZATION_UNAVAILABLE`.
+## 14. Correção dos arrays de cargos
 
-## 8. Modelo de autorização por guild
+A projeção `VOICE_HUB_SELECT` inclui:
 
-### Processo web
+- `permissionRoles`;
+- `ignoredRoles`;
+- `moderatorRoles`.
 
-Função:
+Cada `RoleSelector` envia um marcador `<field>Present`. Com marcador e nenhum
+ID, `[]` é uma limpeza intencional; sem marcador, o campo é omitido do update e
+o valor atual é preservado. Abrir/salvar sem mudança mantém os valores.
 
-```text
-requireGuildAuthorization(actor, guildId)
-```
+## 15. Validação de `toolKey`
 
-Localização:
+`USER_TOOLS` é o catálogo único. `validateToolToggle()` aceita somente
+`templates` e `voice-channels` e exige `typeof enabled === "boolean"`.
+`toggleToolForOperator()` deriva o usuário de `requireOperator()` antes do
+upsert. Chaves desconhecidas não criam `UserTool` arbitrário.
 
-- `src/lib/discord/guild-authorization.js`.
+## 16. Timeout do cliente interno
 
-Ela valida o `guildId`, exige um ator já obtido no servidor e chama o bot pela
-API privada. A resposta precisa confirmar exatamente a mesma guild. O contexto
-retornado contém somente `actor` e `guildId`.
+`src/lib/discord/bot-api-client.js` centraliza configuração, headers, request,
+abort e conversão de falhas. O default é 5000 ms. `BOT_API_TIMEOUT_MS` é
+opcional e aceita inteiro entre 100 e 30000 ms. `AbortController` encerra a
+chamada e o timer é limpo em `finally`.
 
-### API privada e bot
+Não há retry automático, sobretudo nas operações mutáveis.
 
-Novo endpoint:
+## 17. Estratégia de erros públicos
 
-```text
-GET /guilds/:guildId/access
-```
+- 400: entrada/autorização inválida;
+- 401: segredo incorreto;
+- 403: acesso à guild negado;
+- 404: canal compatível não encontrado;
+- 503: autorização/Discord indisponível ou efeito externo falhou.
 
-Headers internos:
+Endpoints alterados não retornam stack, objeto Discord, URL interna nem
+`error.message`. Logs usam mensagens fixas e não incluem segredo, token ou
+payload privado. O web converte falhas retornadas em códigos/mensagens públicas
+de `AuthorizationError` quando necessário.
 
-- `x-bot-secret`;
-- `x-actor-discord-id`.
+## 18. Arquivos criados
 
-O ID do ator vem da sessão + banco no Next.js, não do navegador. O bot valida
-novamente os dois snowflakes, encontra a guild no próprio cache, busca o membro
-atual com `guild.members.fetch` e exige:
+- `src/lib/discord/guild-operations.js`;
+- `src/lib/discord/guild-operations.test.js`;
+- `src/lib/discord/bot-api-client.test.js`;
+- `src/lib/templates/channel-order.js`;
+- `src/lib/templates/channel-order.test.js`;
+- `src/lib/voice-hubs/voice-hub-operations.js`;
+- `src/lib/voice-hubs/voice-hub-operations.test.js`;
+- `src/lib/voice-hubs/voice-hub-service.js`;
+- `src/lib/voice-hubs/voice-hub-service.test.js`;
+- `src/lib/user-tools.test.js`.
 
-- owner da guild; ou
-- permissão `Administrator`; ou
-- permissão `ManageGuild`.
+## 19. Arquivos modificados
 
-Guild ausente, membro ausente e membro sem permissão resultam em negação.
-Falha inesperada do Discord resulta em indisponibilidade, nunca em acesso.
-
-Módulo do bot:
-
-- `bot/guild-authorization.js`.
-
-## 9. Estratégia de erros
-
-Módulo:
-
-- `src/lib/auth/authorization-error.js`.
-
-Categorias estáveis:
-
-- `UNAUTHENTICATED`;
-- `ACCESS_DENIED`;
-- `INVALID_INPUT`;
-- `INVALID_CONFIGURATION`;
-- `GUILD_ACCESS_DENIED`;
-- `AUTHORIZATION_UNAVAILABLE`;
-- `UNEXPECTED`.
-
-`AuthorizationError` conserva a categoria internamente.
-`toAuthorizationFailure()` devolve somente `error`, `code` e mensagem pública.
-Cause, stack, consulta, variável, allowlist e mensagem interna nunca são
-serializados. Erros desconhecidos viram `UNEXPECTED`.
-
-Na API do bot:
-
-- entrada inválida → 400;
-- segredo inválido → 401;
-- guild negada → 403;
-- Discord/autorização indisponível → 503.
-
-## 10. Validações de runtime
-
-- snowflakes Discord de ator, guild e IDs da allowlist;
-- tipo string e conteúdo não vazio;
-- separadores, espaços e duplicatas da allowlist;
-- porta interna numérica entre 1 e 65535;
-- presença não vazia de `BOT_API_SECRET` no cliente central;
-- correspondência exata entre guild solicitada e guild confirmada pelo bot;
-- formato mínimo da resposta de autorização e lista de cargos.
-
-Nenhuma biblioteca foi adicionada; as validações são pequenas e explícitas.
-
-## 11. Fluxo piloto escolhido
-
-Fluxo:
-
-```text
-getGuildRoles(guildId)
-→ requireOperator()
-→ requireGuildAuthorization()
-→ GET /guilds/:guildId/access
-→ fetchGuildRolesWithBot()
-→ GET /guilds/:guildId/roles
-→ verificação repetida no bot
-→ lista de cargos ou falha segura
-```
-
-A Server Action está em:
-
-- `src/app/dashboard/voice-channels/[id]/actions.js`.
-
-O orquestrador testável está em:
-
-- `src/lib/discord/guild-roles.js`.
-
-## 12. Justificativa do fluxo piloto
-
-A leitura de cargos foi escolhida porque:
-
-- é administrativa e ligada a uma guild;
-- é somente leitura;
-- não cria, altera ou exclui recursos;
-- já atravessa Server Action, API privada e Discord;
-- exercita autenticação, allowlist, guild e repetição da autorização no bot;
-- possui baixo risco de regressão comparado a criar/excluir Hub ou remover o
-  bot;
-- não exige migrar as demais ações e, portanto, não antecipa a Fase 1B.
-
-## 13. Arquivos criados
-
-- `.env.example` — tornou-se versionável, sem valores secretos;
-- `bot/api.test.mjs`;
-- `bot/guild-authorization.js`;
-- `bot/guild-authorization.test.mjs`;
-- `src/lib/auth/authenticated-actor.js`;
-- `src/lib/auth/authenticated-actor.test.js`;
-- `src/lib/auth/authorization-error.js`;
-- `src/lib/auth/authorization-error.test.js`;
-- `src/lib/auth/operator-allowlist.js`;
-- `src/lib/auth/operator-allowlist.test.js`;
-- `src/lib/auth/operator-authorization.js`;
-- `src/lib/auth/operator-authorization.test.js`;
+- `.env.example`;
+- `bot/api.js`, `bot/api.test.mjs`;
+- `bot/guild-authorization.js`, `bot/guild-authorization.test.mjs`;
+- `src/app/dashboard/layout.js`;
+- `src/app/dashboard/actions.js`;
+- `src/app/dashboard/servers/actions.js`;
+- `src/app/dashboard/tools-actions.js`;
+- `src/app/dashboard/templates/[id]/actions.js`;
+- páginas/actions/editor/fetch do domínio `voice-channels`;
 - `src/lib/discord/bot-api-client.js`;
-- `src/lib/discord/discord-identifiers.js`;
-- `src/lib/discord/guild-authorization.js`;
-- `src/lib/discord/guild-authorization.test.js`;
-- `src/lib/discord/guild-roles.js`;
-- `src/lib/discord/guild-roles.test.js`.
+- `src/lib/user-tools.js`;
+- `AI_CONTEXT.md`, `DECISIONS.md` e este `AI_HANDOFF.md`.
 
-## 14. Arquivos modificados
+`AGENTS.md`, `AI_RULES.md`, `README.md` e `PROJECT_REPORT.md` não foram
+alterados. Não surgiu contradição operacional que justificasse mudar as regras.
 
-- `.gitignore`: libera somente `.env.example` para versionamento;
-- `bot/api.js`: factory testável, endpoint de acesso e proteção do piloto;
-- `src/app/dashboard/voice-channels/[id]/actions.js`: integração do piloto;
-- `AI_CONTEXT.md`: modelo permanente e limitações atuais;
-- `DECISIONS.md`: ADR-014 e ADR-015 passaram de Proposta para Aceita;
-- `AI_HANDOFF.md`: sobrescrito por este relatório.
+## 20. Testes adicionados
 
-`AGENTS.md` e `AI_RULES.md` não foram alterados: já continham instruções
-permanentes suficientes e nenhuma contradição objetiva foi encontrada.
+Cobertura nova/expandida:
 
-## 15. Testes adicionados
+- listagem filtrada e fail-safe de guilds;
+- remoção autorizada, ausente, inválida e negada;
+- POST/PATCH/DELETE de voz e tipo incompatível;
+- ausência de efeitos após negação;
+- create/read/update/delete/roles de VoiceHub por owner/guild;
+- IDs manipulados e recurso alheio;
+- preservação/limpeza/ausência de arrays;
+- projeção dos arrays para o editor;
+- reorder válido, externo, duplicado, omitido, extra e inexistente;
+- tool keys e tipos;
+- configuração de timeout, caminho normal, abort e ausência de retry;
+- redaction de falhas externas.
 
-Foram adicionados 43 testes, agrupados em:
+## 21. Resultado dos testes
 
-- parser/comparação da allowlist;
-- identidade autenticada;
-- autorização de operador;
-- mensagens públicas e redaction de erros;
-- autorização web por guild;
-- orquestração e contrato do fluxo piloto;
-- autorização Discord no bot;
-- integração HTTP local do endpoint de cargos com Express real.
-
-Casos cobertos:
-
-- permitido e negado;
-- sessão ausente/incompleta;
-- ID externo sem substituir a sessão;
-- configuração ausente, vazia, inválida, duplicada e com separadores;
-- guild inválida, negada, ausente e cruzada;
-- membro sem permissão;
-- owner, Administrator e ManageGuild;
-- falha de banco/Discord/fonte de autorização;
-- segredo interno incorreto;
-- ator ausente no endpoint;
-- resposta pública sem detalhes internos.
-
-## 16. Resultado dos testes
-
-Última execução antes deste handoff:
+Última execução sobre o código final:
 
 ```text
 npm test
-10 arquivos aprovados
-47 testes aprovados
-0 falhas
+16 arquivos aprovados
+104 testes aprovados
+0 falhas e 0 erros não tratados
 ```
 
-Quatro testes já existiam; 43 foram adicionados nesta fase.
+Os testes usam objetos controlados e Express real em porta efêmera local. Não
+acessam Discord, OAuth ou PostgreSQL reais.
 
-O teste HTTP usa uma porta efêmera local, Express real e objetos Discord
-controlados. Não acessa Discord, banco ou rede externa.
-
-## 17. Resultado do lint
-
-Última execução antes deste handoff:
+## 22. Resultado do lint
 
 ```text
 npm run lint
@@ -388,12 +275,10 @@ npm run lint
 7 warnings
 ```
 
-Os sete warnings preexistentes são `@next/next/no-img-element` em componentes
-visuais. Não foram corrigidos por estarem fora do escopo.
+Os sete warnings preexistentes são `@next/next/no-img-element` e permanecem fora
+do escopo visual da fase.
 
-## 18. Resultado do build
-
-Última execução sobre o diff final:
+## 23. Resultado do build
 
 ```text
 npm run build
@@ -403,91 +288,103 @@ Next.js 15.5.22 compilado
 build concluído com sucesso
 ```
 
-O build repetiu somente os sete warnings preexistentes de `<img>`.
+O primeiro build intermediário identificou que o dashboard autenticado precisava
+ser explicitamente dinâmico; após `dynamic = "force-dynamic"`, duas execuções
+subsequentes passaram. O build final manteve apenas os sete warnings antigos.
 
-## 19. Dependências
+## 24. Resultado do Prisma
+
+```text
+npx prisma validate
+schema válido
+```
+
+O `prebuild` também executou `prisma generate` com sucesso.
+
+## 25. Dependências
 
 Nenhuma dependência foi adicionada, removida ou atualizada.
 
 - `package.json`: sem alteração;
 - `package-lock.json`: sem alteração.
 
-Foram usados Vitest, Express e discord.js já instalados.
+Timeout usa `AbortController` nativo do Node atual.
 
-## 20. Banco e migrations
+## 26. Confirmação de ausência de migrations
 
 - `prisma/schema.prisma`: sem alteração;
 - `prisma/migrations/`: sem alteração;
 - migration criada: nenhuma;
-- migration executada: nenhuma;
-- `npx prisma validate`: sucesso.
+- migration executada: nenhuma.
 
-A consulta de identidade usa o modelo `Account` já existente.
+## 27. Mudanças funcionais perceptíveis
 
-## 21. Riscos restantes
+- conta autenticada fora da allowlist deixa de abrir o dashboard;
+- lista de servidores pode ficar menor porque mostra apenas guilds administradas;
+- ações perdem acesso imediatamente se permissões Discord forem revogadas;
+- Hubs de guild não autorizada deixam de aparecer/abrir;
+- salvar o editor não apaga mais cargos ausentes acidentalmente;
+- requests privados podem falhar após 5 s por padrão, em vez de ficar pendurados;
+- erros do bot ficam genéricos e seguros para o consumidor.
 
-- a allowlist ainda não bloqueia globalmente login/dashboard; somente o piloto
-  exige operador nesta fase;
-- disponibilidade da autorização depende da API privada e do Discord;
-- a instalação precisa configurar `ALLOWED_DISCORD_USER_IDS` antes de usar o
-  piloto;
-- o teste não usa sessão OAuth, banco ou guild Discord reais;
-- não há rate limiting, timeout explícito ou observabilidade estruturada;
-- outras rotas do bot ainda retornam detalhes de falha e não verificam ator;
-- não há middleware global; a política continuará aplicada por operações;
-- múltiplos `PrismaClient` ainda existem fora do singleton;
-- IDs válidos continuam insuficientes sem ownership/escopo nas operações não
-  migradas.
+Não houve redesign nem nova funcionalidade de produto.
 
-## 22. Operações ainda vulneráveis ou não migradas
+## 28. Riscos restantes
 
-### Guild/Discord
+- criação Discord seguida de falha Prisma ainda pode deixar canal órfão;
+- exclusão Discord seguida de falha Prisma ainda pode deixar divergência;
+- salas temporárias e timers continuam em memória;
+- não há teste com OAuth, banco ou Discord reais;
+- não há rate limiting ou observabilidade estruturada;
+- `ownershipLockMinutes` continua sem efeito;
+- workflows de template continuam sem TTL/paginação completa;
+- validação integral de todos os campos ainda não foi feita;
+- README/instalação continuam desatualizados.
 
-- `getGuilds`: lista todas as guilds do bot;
-- `removeGuild`: não exige operador nem autorização da guild;
-- `createVoiceHub`: confia no `guildId` do formulário;
-- `updateVoiceHub`: restringe por owner do registro, mas não reconfirma guild;
-- `deleteVoiceHub`: restringe por owner do registro, mas não reconfirma guild;
-- endpoints POST/PATCH/DELETE de voz e DELETE da guild no bot ainda não exigem
-  `x-actor-discord-id`;
-- páginas que usam `getGuilds` ainda podem exibir guilds não administráveis.
+## 29. Operações ainda não migradas
 
-### Recursos internos
+- comando slash e eventos Discord não usam a allowlist do painel; mantêm o
+  modelo próprio `Account + UserTool + permissões do contexto Discord`;
+- engine de salas não persiste `TemporaryVoiceChannel`;
+- fluxos Discord+banco não possuem reconciliação/compensação completa;
+- validação ampla de nomes, enums e limites dos templates permanece parcial;
+- código legado fora dos fluxos migrados ainda cria `PrismaClient` diretamente.
 
-- `updateChannelOrder`: IDOR crítico entre templates;
-- template/channel actions: não usam `requireOperator` e possuem validação
-  parcial;
-- `toggleTool`: aceita `toolKey` e boolean sem validação suficiente;
-- comandos slash: vinculam a conta Discord, mas não aplicam a allowlist central;
-- leitura/edição de Hubs ainda possui a falha preexistente dos arrays de cargos
-  omitidos pela query da página.
+As operações administrativas web de templates, toggles, guilds e VoiceHub
+agora exigem operador. Logout permanece naturalmente disponível a qualquer
+sessão.
 
-Esses itens não foram corrigidos para respeitar a divisão 1A/1B.
+## 30. Recomendações para a Fase 2
 
-## 23. Plano objetivo para a Fase 1B
+1. ampliar validação de domínio e contratos de retorno das Server Actions;
+2. definir limites/enum de templates e configuração completa de Hub;
+3. padronizar tratamento de conflitos Prisma/Discord sem expor detalhes;
+4. adicionar testes de integração com banco descartável;
+5. planejar compensação simples e idempotência antes de retries;
+6. depois integrar `TemporaryVoiceChannel` e reconciliação de startup;
+7. manter Docker/empacotamento para a fase prevista, sem antecipar infraestrutura.
 
-1. aplicar `requireOperator` às operações administrativas restantes;
-2. filtrar `getGuilds` pela interseção de guilds efetivamente autorizadas;
-3. aplicar `requireGuildAuthorization` antes de todo efeito Discord;
-4. exigir e verificar ator nos endpoints POST/PATCH/DELETE do bot;
-5. limitar consultas VoiceHub por user + guild autorizada + recurso;
-6. corrigir o IDOR de `updateChannelOrder` validando o conjunto completo;
-7. validar enums, comprimentos, números, arrays e tool keys;
-8. testar cada action com sessão ausente, operador negado, guild cruzada,
-   recurso alheio, entrada inválida e falha externa;
-9. revisar mensagens/logs restantes para remover detalhes internos;
-10. executar novamente lint, testes, build, Prisma validate e auditoria de
-    segredos.
+## 31. Arquivos prioritários para revisão
 
-Não avançar para persistência de canais temporários ou Docker antes de concluir
-essa migração de segurança.
+- `src/lib/voice-hubs/voice-hub-operations.js`;
+- `src/lib/voice-hubs/voice-hub-service.js`;
+- `src/lib/discord/bot-api-client.js`;
+- `src/lib/discord/guild-operations.js`;
+- `src/lib/templates/channel-order.js`;
+- `bot/guild-authorization.js`;
+- `bot/api.js`;
+- `src/app/dashboard/layout.js`;
+- `src/app/dashboard/voice-channels/[id]/actions.js`;
+- `src/app/dashboard/templates/[id]/actions.js`.
 
-## 24. Resumo para o próximo agente
+## 32. Resumo executivo
 
-A fonte de identidade é sessão Auth.js + `Account.providerAccountId`. Nunca
-aceite `userId` ou Discord ID do cliente. A allowlist existe somente em
-`operator-allowlist.js`; não replique parsing. Use `requireOperator`, depois
-`requireGuildAuthorization`, e limite a consulta/efeito à guild confirmada. O
-bot deve repetir a verificação com o ator transmitido pela API privada. O fluxo
-de cargos é o exemplo piloto. Todas as outras operações listadas acima ainda
-precisam ser migradas na Fase 1B.
+A Fase 1B fecha as vulnerabilidades críticas identificadas para a superfície
+administrativa atual: allowlist é global e repetida em actions, guilds são
+isoladas pela permissão Discord atual, efeitos mutáveis têm defesa em
+profundidade, VoiceHub deriva escopo do banco, reorder não atravessa templates e
+arrays não são apagados por ausência. O cliente privado agora falha em tempo
+finito e não repete mutações. A suíte passou de 47 para 104 testes sem novas
+dependências, schema ou migrations. O próximo risco estrutural prioritário é
+consistência/persistência entre Discord e PostgreSQL, precedido pela validação
+de domínio planejada para a Fase 2.

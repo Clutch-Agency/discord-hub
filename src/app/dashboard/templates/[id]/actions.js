@@ -1,14 +1,13 @@
 "use server"
 
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
 import { revalidatePath } from "next/cache"
-import { redirect } from "next/navigation"
 import { normalizeChannelName } from "@/lib/discord-utils"
+import { requireOperator } from "@/lib/auth/operator-authorization"
+import { reorderTemplateChannels } from "@/lib/templates/channel-order"
 
 export async function getTemplate(id) { // Receber id como argumento simples
-  const session = await auth()
-  if (!session) return null
+  const actor = await requireOperator()
 
   if (!id) { // Adicionar uma verificação para garantir que o id existe
     console.error("ID do template não fornecido para getTemplate.")
@@ -16,20 +15,19 @@ export async function getTemplate(id) { // Receber id como argumento simples
   }
 
   return prisma.template.findUnique({
-    where: { id, userId: session.user.id },
+    where: { id, userId: actor.userId },
     include: { channels: { orderBy: { order: "asc" } } },
   })
 }
 
 export async function updateTemplateName(id, formData) {
-  const session = await auth()
-  if (!session) redirect("/")
+  const actor = await requireOperator()
 
   const name = formData.get("name")
   if (!name || name.trim() === "") return
 
   await prisma.template.updateMany({
-    where: { id, userId: session.user.id },
+    where: { id, userId: actor.userId },
     data: { name: name.trim() },
   })
 
@@ -37,8 +35,7 @@ export async function updateTemplateName(id, formData) {
 }
 
 export async function addChannel(templateId, formData) {
-  const session = await auth()
-  if (!session) redirect("/")
+  const actor = await requireOperator()
 
   const name = formData.get("name")
   const type = formData.get("type")
@@ -47,7 +44,7 @@ export async function addChannel(templateId, formData) {
   if (!name || name.trim() === "") return
 
   const template = await prisma.template.findUnique({
-    where: { id: templateId, userId: session.user.id },
+    where: { id: templateId, userId: actor.userId },
     include: { channels: true },
   })
 
@@ -69,8 +66,7 @@ export async function addChannel(templateId, formData) {
 }
 
 export async function updateChannel(channelId, formData) {
-  const session = await auth()
-  if (!session) redirect("/")
+  const actor = await requireOperator()
 
   const name = formData.get("name")
   const type = formData.get("type")
@@ -84,7 +80,7 @@ export async function updateChannel(channelId, formData) {
     include: { template: true },
   })
 
-  if (!channel || channel.template.userId !== session.user.id) return
+  if (!channel || channel.template.userId !== actor.userId) return
 
   await prisma.channel.update({
     where: { id: channelId },
@@ -100,15 +96,14 @@ export async function updateChannel(channelId, formData) {
 }
 
 export async function deleteChannel(channelId) {
-  const session = await auth()
-  if (!session) redirect("/")
+  const actor = await requireOperator()
 
   const channel = await prisma.channel.findUnique({
     where: { id: channelId },
     include: { template: true },
   })
 
-  if (!channel || channel.template.userId !== session.user.id) return
+  if (!channel || channel.template.userId !== actor.userId) return
 
   await prisma.channel.delete({
     where: { id: channelId },
@@ -118,23 +113,27 @@ export async function deleteChannel(channelId) {
 }
 
 export async function updateChannelOrder(templateId, channels) {
-  const session = await auth()
-  if (!session) redirect("/")
+  await reorderTemplateChannels(templateId, channels, {
+    requireOperator,
+    findOwnedTemplate: (id, userId) =>
+      prisma.template.findFirst({
+        where: { id, userId },
+        select: { id: true, channels: { select: { id: true } } },
+      }),
+    persistOrder: (id, orderedIds) =>
+      prisma.$transaction(async (transaction) => {
+        for (const [order, channelId] of orderedIds.entries()) {
+          const result = await transaction.channel.updateMany({
+            where: { id: channelId, templateId: id },
+            data: { order },
+          })
 
-  const template = await prisma.template.findUnique({
-    where: { id: templateId, userId: session.user.id },
+          if (result.count !== 1) {
+            throw new Error("Channel order changed concurrently")
+          }
+        }
+      }),
   })
-
-  if (!template) return
-
-  const transaction = channels.map((channel, index) =>
-    prisma.channel.update({
-      where: { id: channel.id },
-      data: { order: index },
-    })
-  )
-
-  await prisma.$transaction(transaction)
 
   revalidatePath(`/dashboard/templates/${templateId}`)
 }

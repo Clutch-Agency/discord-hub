@@ -1,13 +1,12 @@
 "use server"
 
-import { auth } from "@/auth"
 import { prisma } from "@/lib/prisma"
+import { requireOperator } from "@/lib/auth/operator-authorization"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
 export async function createTemplate(formData) {
-  const session = await auth()
-  if (!session) redirect("/")
+  const actor = await requireOperator()
 
   const name = formData.get("name")
   if (!name || name.trim() === "") return
@@ -15,7 +14,7 @@ export async function createTemplate(formData) {
   const template = await prisma.template.create({
     data: {
       name: name.trim(),
-      userId: session.user.id,
+      userId: actor.userId,
     },
   })
 
@@ -24,21 +23,19 @@ export async function createTemplate(formData) {
 }
 
 export async function getTemplates() {
-  const session = await auth()
-  if (!session) return []
+  const actor = await requireOperator()
 
   return prisma.template.findMany({
-    where: { userId: session.user.id },
+    where: { userId: actor.userId },
     orderBy: { createdAt: "desc" },
   })
 }
 
 export async function deleteTemplate(id) {
-  const session = await auth()
-  if (!session) redirect("/")
+  const actor = await requireOperator()
 
   await prisma.template.deleteMany({
-    where: { id, userId: session.user.id },
+    where: { id, userId: actor.userId },
   })
 
   revalidatePath("/dashboard")

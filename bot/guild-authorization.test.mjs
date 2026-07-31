@@ -5,6 +5,7 @@ const {
   GUILD_AUTHORIZATION_CODES,
   authorizeGuildActor,
   canManageGuild,
+  listAuthorizedGuilds,
 } = guildAuthorization
 
 const GUILD_ID = "33333333333333333"
@@ -107,5 +108,51 @@ describe("bot guild authorization", () => {
       authorizeGuildActor(createClient(guild), GUILD_ID, ACTOR_ID)
     ).rejects.toMatchObject({ code: GUILD_AUTHORIZATION_CODES.UNAVAILABLE })
   })
-})
 
+  it("filtra guilds negadas e devolve somente guilds administráveis", async () => {
+    const allowedGuild = {
+      ...createGuild({
+        ownerId: ACTOR_ID,
+        member: { permissions: { has: vi.fn(() => false) } },
+      }),
+      name: "Allowed",
+      memberCount: 10,
+      iconURL: vi.fn(() => null),
+    }
+    const deniedGuildId = "44444444444444444"
+    const deniedGuild = {
+      ...createGuild({
+        member: { permissions: { has: vi.fn(() => false) } },
+      }),
+      id: deniedGuildId,
+      name: "Denied",
+      memberCount: 20,
+      iconURL: vi.fn(() => null),
+    }
+    const client = {
+      guilds: {
+        cache: new Map([
+          [GUILD_ID, allowedGuild],
+          [deniedGuildId, deniedGuild],
+        ]),
+      },
+    }
+
+    await expect(listAuthorizedGuilds(client, ACTOR_ID)).resolves.toEqual([
+      { id: GUILD_ID, name: "Allowed", icon: null, memberCount: 10 },
+    ])
+  })
+
+  it("falha de forma segura se a autorização de uma guild fica indisponível", async () => {
+    const guild = {
+      ...createGuild({ fetchError: new Error("Discord unavailable") }),
+      name: "Unavailable",
+      memberCount: 0,
+      iconURL: vi.fn(() => null),
+    }
+
+    await expect(
+      listAuthorizedGuilds(createClient(guild), ACTOR_ID)
+    ).rejects.toMatchObject({ code: GUILD_AUTHORIZATION_CODES.UNAVAILABLE })
+  })
+})

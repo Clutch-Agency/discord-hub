@@ -1,10 +1,30 @@
 import { auth } from "@/auth"
-import { redirect } from "next/navigation"
+import { notFound, redirect } from "next/navigation"
 import { getUserToolsState } from "@/lib/user-tools"
+import {
+  AUTHORIZATION_ERROR_CODES,
+  isAuthorizationError,
+} from "@/lib/auth/authorization-error"
+import { requireOperator } from "@/lib/auth/operator-authorization"
 import Sidebar from "@/components/Sidebar"
 import UserDropdown from "@/components/UserDropdown"
 
+export const dynamic = "force-dynamic"
+
 export default async function DashboardLayout({ children }) {
+  try {
+    await requireOperator()
+  } catch (error) {
+    if (
+      isAuthorizationError(error) &&
+      error.code === AUTHORIZATION_ERROR_CODES.UNAUTHENTICATED
+    ) {
+      redirect("/")
+    }
+
+    notFound()
+  }
+
   const session = await auth()
 
   if (!session) {

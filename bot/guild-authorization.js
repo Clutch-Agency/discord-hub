@@ -62,7 +62,9 @@ async function authorizeGuildActor(client, guildId, actorDiscordId) {
   let member
 
   try {
-    member = await guild.members.fetch(normalizedActorId)
+    member =
+      guild.members.cache?.get(normalizedActorId) ||
+      (await guild.members.fetch(normalizedActorId))
   } catch (error) {
     if (isUnknownMemberError(error)) {
       throw new GuildAuthorizationError(
@@ -90,11 +92,48 @@ async function authorizeGuildActor(client, guildId, actorDiscordId) {
   }
 }
 
+async function listAuthorizedGuilds(client, actorDiscordId) {
+  const normalizedActorId = normalizeDiscordId(actorDiscordId)
+
+  if (!normalizedActorId) {
+    throw new GuildAuthorizationError(
+      GUILD_AUTHORIZATION_CODES.INVALID_INPUT
+    )
+  }
+
+  const authorizedGuilds = []
+
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      const authorization = await authorizeGuildActor(
+        client,
+        guild.id,
+        normalizedActorId
+      )
+
+      authorizedGuilds.push({
+        id: authorization.guild.id,
+        name: authorization.guild.name,
+        icon: authorization.guild.iconURL(),
+        memberCount: authorization.guild.memberCount,
+      })
+    } catch (error) {
+      if (error.code === GUILD_AUTHORIZATION_CODES.ACCESS_DENIED) {
+        continue
+      }
+
+      throw error
+    }
+  }
+
+  return authorizedGuilds
+}
+
 module.exports = {
   GUILD_AUTHORIZATION_CODES,
   GuildAuthorizationError,
   authorizeGuildActor,
   canManageGuild,
+  listAuthorizedGuilds,
   normalizeDiscordId,
 }
-

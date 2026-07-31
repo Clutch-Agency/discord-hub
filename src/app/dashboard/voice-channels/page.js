@@ -1,4 +1,3 @@
-import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { isToolEnabled } from "@/lib/user-tools"
 import { prisma } from "@/lib/prisma"
@@ -17,6 +16,7 @@ import {
 } from "lucide-react"
 import { getGuilds } from "@/app/dashboard/servers/actions"
 import { deleteVoiceHub } from "./[id]/actions"
+import { requireOperator } from "@/lib/auth/operator-authorization"
 
 function formatKeepAlive(minutes) {
   if (minutes === -1) {
@@ -39,28 +39,25 @@ function formatUserLimit(limit) {
 }
 
 export default async function VoiceChannelsPage() {
-  const session = await auth()
+  const actor = await requireOperator()
 
-  if (!session) {
-    redirect("/")
-  }
-
-  const enabled = await isToolEnabled(session.user.id, "voice-channels")
+  const enabled = await isToolEnabled(actor.userId, "voice-channels")
 
   if (!enabled) {
     redirect("/dashboard")
   }
 
+  const { error, guilds } = await getGuilds()
+  const authorizedGuildIds = guilds.map((guild) => guild.id)
   const voiceHubs = await prisma.voiceHub.findMany({
     where: {
-      userId: session.user.id,
+      userId: actor.userId,
+      guildId: { in: authorizedGuildIds },
     },
     orderBy: {
       createdAt: "asc",
     },
   })
-
-  const { error, guilds } = await getGuilds()
 
   const voiceHubsWithGuilds = voiceHubs.map((hub) => {
     const guild = guilds.find((item) => item.id === hub.guildId)

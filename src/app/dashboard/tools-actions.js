@@ -1,12 +1,14 @@
 "use server"
 
-import { auth } from "@/auth"
-import { redirect } from "next/navigation"
-import { setToolEnabled } from "@/lib/user-tools" // Importar setToolEnabled
+import { requireOperator } from "@/lib/auth/operator-authorization"
+import {
+  setToolEnabled,
+  toggleToolForOperator,
+} from "@/lib/user-tools"
 
 export async function toggleTool(toolKey, enabled) {
-  const session = await auth()
-  if (!session) redirect("/")
-
-  await setToolEnabled(session.user.id, toolKey, enabled)
+  await toggleToolForOperator(toolKey, enabled, {
+    requireOperator,
+    persistToolState: setToolEnabled,
+  })
 }

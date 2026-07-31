@@ -393,6 +393,12 @@ conta Discord.
 Reduz a superfície pública com uma solução compatível com o uso pessoal. A
 allowlist não substitui autorização por guild.
 
+## Implementação atual
+
+A Fase 1B aplica `requireOperator()` no layout dinâmico do dashboard e repete a
+verificação nas Server Actions administrativas. Configuração inválida, sessão
+ausente ou usuário fora da lista não liberam conteúdo nem mutações.
+
 ## Critério de revisão
 
 Reavaliar apenas se o projeto deixar de ser uma ferramenta pessoal.
@@ -422,6 +428,12 @@ verifica se o ator administra a guild recebida.
 
 A autorização usa o estado atual do Discord e não depende de confiar em hidden
 inputs. O bot e o painel passam a compartilhar um contrato explícito de ator.
+
+## Implementação atual
+
+A Fase 1B concretiza esta decisão na listagem/remoção de guilds e no CRUD de
+VoiceHub. Todos os endpoints mutáveis envolvidos exigem segredo e ator, repetem
+a autorização no bot e derivam guild/canal do banco quando o recurso já existe.
 
 ## Critério de revisão
 

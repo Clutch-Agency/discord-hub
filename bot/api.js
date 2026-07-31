@@ -3,7 +3,23 @@ const { ChannelType } = require("discord.js")
 const {
   GUILD_AUTHORIZATION_CODES,
   authorizeGuildActor,
+  listAuthorizedGuilds,
+  normalizeDiscordId,
 } = require("./guild-authorization")
+
+function isUnknownChannelError(error) {
+  return error?.code === 10003 || error?.code === "UnknownChannel"
+}
+
+function normalizeChannelName(value) {
+  if (typeof value !== "string") {
+    return null
+  }
+
+  const name = value.trim()
+
+  return name.length >= 1 && name.length <= 100 ? name : null
+}
 
 function createBotApi(client, options = {}) {
   const app = express()
@@ -24,6 +40,21 @@ function createBotApi(client, options = {}) {
     next()
   })
 
+  function sendGuildAuthorizationError(error, res) {
+    if (error.code === GUILD_AUTHORIZATION_CODES.INVALID_INPUT) {
+      res.status(400).json({ error: "invalid authorization input" })
+      return
+    }
+
+    if (error.code === GUILD_AUTHORIZATION_CODES.ACCESS_DENIED) {
+      res.status(403).json({ error: "guild access denied" })
+      return
+    }
+
+    console.error("Falha ao verificar autorização da guild.")
+    res.status(503).json({ error: "guild authorization unavailable" })
+  }
+
   async function requireGuildActor(req, res) {
     try {
       return await authorizeGuildActor(
@@ -32,18 +63,7 @@ function createBotApi(client, options = {}) {
         req.headers["x-actor-discord-id"]
       )
     } catch (error) {
-      if (error.code === GUILD_AUTHORIZATION_CODES.INVALID_INPUT) {
-        res.status(400).json({ error: "invalid authorization input" })
-        return null
-      }
-
-      if (error.code === GUILD_AUTHORIZATION_CODES.ACCESS_DENIED) {
-        res.status(403).json({ error: "guild access denied" })
-        return null
-      }
-
-      console.error("Falha ao verificar autorização da guild.")
-      res.status(503).json({ error: "guild authorization unavailable" })
+      sendGuildAuthorizationError(error, res)
       return null
     }
   }
@@ -61,15 +81,17 @@ function createBotApi(client, options = {}) {
     })
   })
 
-  app.get("/guilds", (req, res) => {
-    const guilds = client.guilds.cache.map((guild) => ({
-      id: guild.id,
-      name: guild.name,
-      icon: guild.iconURL(),
-      memberCount: guild.memberCount,
-    }))
+  app.get("/guilds", async (req, res) => {
+    try {
+      const guilds = await listAuthorizedGuilds(
+        client,
+        req.headers["x-actor-discord-id"]
+      )
 
-    res.json(guilds)
+      res.json(guilds)
+    } catch (error) {
+      sendGuildAuthorizationError(error, res)
+    }
   })
 
   app.get("/guilds/:guildId/access", async (req, res) => {
@@ -96,7 +118,6 @@ function createBotApi(client, options = {}) {
 
     try {
       const roles = await guild.roles.fetch()
-
       const formattedRoles = roles
         .filter((role) => role.id !== guild.roles.everyone.id && !role.managed)
         .sort((first, second) => second.position - first.position)
@@ -109,25 +130,23 @@ function createBotApi(client, options = {}) {
 
       res.json(formattedRoles)
     } catch (error) {
-      console.error("Erro ao buscar cargos do servidor autorizado.")
+      console.error("Falha ao buscar cargos de uma guild autorizada.")
       res.status(503).json({ error: "failed to fetch roles" })
     }
   })
 
   app.post("/guilds/:guildId/voice-channels", async (req, res) => {
-    const guild = client.guilds.cache.get(req.params.guildId)
-    const name = String(req.body?.name || "").trim()
+    const authorization = await requireGuildActor(req, res)
 
-    if (!guild) {
-      res.status(404).json({ error: "guild not found" })
+    if (!authorization) {
       return
     }
 
+    const { guild } = authorization
+    const name = normalizeChannelName(req.body?.name)
+
     if (!name) {
-      res.status(400).json({
-        error: "invalid channel name",
-        details: "O nome do canal de voz é obrigatório.",
-      })
+      res.status(400).json({ error: "invalid channel name" })
       return
     }
 
@@ -143,33 +162,29 @@ function createBotApi(client, options = {}) {
         channelName: channel.name,
       })
     } catch (error) {
-      console.log("Erro ao criar canal de voz:", error.message)
-      res.status(500).json({
-        error: "failed to create voice channel",
-        details: error.message,
-      })
+      console.error("Falha ao criar canal de voz em guild autorizada.")
+      res.status(503).json({ error: "failed to create voice channel" })
     }
   })
 
   app.patch("/guilds/:guildId/voice-channels/:channelId", async (req, res) => {
-    const guild = client.guilds.cache.get(req.params.guildId)
-    const name = String(req.body?.name || "").trim()
+    const authorization = await requireGuildActor(req, res)
 
-    if (!guild) {
-      res.status(404).json({ error: "guild not found" })
+    if (!authorization) {
       return
     }
 
-    if (!name) {
-      res.status(400).json({
-        error: "invalid channel name",
-        details: "O nome do canal de voz é obrigatório.",
-      })
+    const { guild } = authorization
+    const channelId = normalizeDiscordId(req.params.channelId)
+    const name = normalizeChannelName(req.body?.name)
+
+    if (!channelId || !name) {
+      res.status(400).json({ error: "invalid voice channel input" })
       return
     }
 
     try {
-      const channel = await guild.channels.fetch(req.params.channelId)
+      const channel = await guild.channels.fetch(channelId)
 
       if (!channel || channel.type !== ChannelType.GuildVoice) {
         res.status(404).json({ error: "voice channel not found" })
@@ -184,24 +199,33 @@ function createBotApi(client, options = {}) {
         channelName: channel.name,
       })
     } catch (error) {
-      console.log("Erro ao atualizar canal de voz:", error.message)
-      res.status(500).json({
-        error: "failed to update voice channel",
-        details: error.message,
-      })
+      if (isUnknownChannelError(error)) {
+        res.status(404).json({ error: "voice channel not found" })
+        return
+      }
+
+      console.error("Falha ao atualizar canal de voz em guild autorizada.")
+      res.status(503).json({ error: "failed to update voice channel" })
     }
   })
 
   app.delete("/guilds/:guildId/voice-channels/:channelId", async (req, res) => {
-    const guild = client.guilds.cache.get(req.params.guildId)
+    const authorization = await requireGuildActor(req, res)
 
-    if (!guild) {
-      res.status(404).json({ error: "guild not found" })
+    if (!authorization) {
+      return
+    }
+
+    const { guild } = authorization
+    const channelId = normalizeDiscordId(req.params.channelId)
+
+    if (!channelId) {
+      res.status(400).json({ error: "invalid voice channel input" })
       return
     }
 
     try {
-      const channel = await guild.channels.fetch(req.params.channelId)
+      const channel = await guild.channels.fetch(channelId)
 
       if (!channel || channel.type !== ChannelType.GuildVoice) {
         res.status(404).json({ error: "voice channel not found" })
@@ -210,36 +234,31 @@ function createBotApi(client, options = {}) {
 
       await channel.delete("Hub de canais temporários removido pela plataforma")
 
-      res.json({
-        success: true,
-        channelId: req.params.channelId,
-      })
+      res.json({ success: true, channelId })
     } catch (error) {
-      console.log("Erro ao excluir canal de voz:", error.message)
-      res.status(500).json({
-        error: "failed to delete voice channel",
-        details: error.message,
-      })
+      if (isUnknownChannelError(error)) {
+        res.status(404).json({ error: "voice channel not found" })
+        return
+      }
+
+      console.error("Falha ao excluir canal de voz em guild autorizada.")
+      res.status(503).json({ error: "failed to delete voice channel" })
     }
   })
 
-  app.delete("/guilds/:id", async (req, res) => {
-    const guild = client.guilds.cache.get(req.params.id)
+  app.delete("/guilds/:guildId", async (req, res) => {
+    const authorization = await requireGuildActor(req, res)
 
-    if (!guild) {
-      res.status(404).json({ error: "guild not found" })
+    if (!authorization) {
       return
     }
 
     try {
-      await guild.leave()
+      await authorization.guild.leave()
       res.json({ success: true })
     } catch (error) {
-      console.log("Erro ao sair do servidor:", error.message)
-      res.status(500).json({
-        error: "failed to leave guild",
-        details: error.message,
-      })
+      console.error("Falha ao remover o bot de uma guild autorizada.")
+      res.status(503).json({ error: "failed to leave guild" })
     }
   })
 

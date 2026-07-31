@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { Collection } from "discord.js"
+import { ChannelType, Collection } from "discord.js"
 import botApi from "./api.js"
 
 const { createBotApi } = botApi
@@ -21,7 +21,7 @@ afterEach(async () => {
   )
 })
 
-function createClient({ allowed = true } = {}) {
+function createClient({ allowed = true, channelFailure = false } = {}) {
   const roles = new Collection([
     [
       GUILD_ID,
@@ -47,6 +47,9 @@ function createClient({ allowed = true } = {}) {
 
   const guild = {
     id: GUILD_ID,
+    name: "Authorized Guild",
+    memberCount: 42,
+    iconURL: vi.fn(() => "https://cdn.example/guild.png"),
     ownerId: allowed ? ACTOR_ID : "99999999999999999",
     members: {
       fetch: vi.fn(async () => ({
@@ -57,15 +60,37 @@ function createClient({ allowed = true } = {}) {
       everyone: { id: GUILD_ID },
       fetch: vi.fn(async () => roles),
     },
+    channels: {
+      create: vi.fn(async ({ name }) => {
+        if (channelFailure) {
+          throw new Error("Discord token and internal details")
+        }
+
+        return { id: "66666666666666666", name }
+      }),
+      fetch: vi.fn(async () => ({
+        id: "66666666666666666",
+        name: "Hub",
+        type: ChannelType.GuildVoice,
+        setName: vi.fn(async function setName(name) {
+          this.name = name
+        }),
+        delete: vi.fn(),
+      })),
+    },
+    leave: vi.fn(),
   }
 
-  return {
+  const client = {
     guilds: {
       cache: new Collection([[GUILD_ID, guild]]),
     },
     isReady: vi.fn(() => true),
     user: null,
   }
+
+  client.testGuild = guild
+  return client
 }
 
 async function startTestApi(client) {
@@ -138,3 +163,231 @@ describe("guild roles pilot API", () => {
   })
 })
 
+describe("protected guild API", () => {
+  it("lista apenas guilds administráveis pelo ator", async () => {
+    const allowedUrl = await startTestApi(createClient())
+    const allowedResponse = await fetch(`${allowedUrl}/guilds`, {
+      headers: {
+        "x-bot-secret": SECRET,
+        "x-actor-discord-id": ACTOR_ID,
+      },
+    })
+
+    expect(allowedResponse.status).toBe(200)
+    await expect(allowedResponse.json()).resolves.toEqual([
+      {
+        id: GUILD_ID,
+        name: "Authorized Guild",
+        icon: "https://cdn.example/guild.png",
+        memberCount: 42,
+      },
+    ])
+
+    const deniedUrl = await startTestApi(createClient({ allowed: false }))
+    const deniedResponse = await fetch(`${deniedUrl}/guilds`, {
+      headers: {
+        "x-bot-secret": SECRET,
+        "x-actor-discord-id": ACTOR_ID,
+      },
+    })
+
+    expect(deniedResponse.status).toBe(200)
+    await expect(deniedResponse.json()).resolves.toEqual([])
+  })
+
+  it("não lista guilds sem ator válido", async () => {
+    const baseUrl = await startTestApi(createClient())
+    const response = await fetch(`${baseUrl}/guilds`, {
+      headers: { "x-bot-secret": SECRET },
+    })
+
+    expect(response.status).toBe(400)
+  })
+
+  it("cria canal somente depois da autorização repetida", async () => {
+    const client = createClient()
+    const baseUrl = await startTestApi(client)
+    const response = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-bot-secret": SECRET,
+          "x-actor-discord-id": ACTOR_ID,
+        },
+        body: JSON.stringify({ name: "Hub" }),
+      }
+    )
+
+    expect(response.status).toBe(201)
+    expect(client.testGuild.channels.create).toHaveBeenCalledWith({
+      name: "Hub",
+      type: ChannelType.GuildVoice,
+    })
+  })
+
+  it("não executa efeitos mutáveis para ator negado", async () => {
+    const client = createClient({ allowed: false })
+    const baseUrl = await startTestApi(client)
+    const headers = {
+      "Content-Type": "application/json",
+      "x-bot-secret": SECRET,
+      "x-actor-discord-id": ACTOR_ID,
+    }
+
+    const createResponse = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels`,
+      { method: "POST", headers, body: JSON.stringify({ name: "Hub" }) }
+    )
+    const updateResponse = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels/66666666666666666`,
+      { method: "PATCH", headers, body: JSON.stringify({ name: "Hub" }) }
+    )
+    const deleteResponse = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels/66666666666666666`,
+      { method: "DELETE", headers }
+    )
+    const leaveResponse = await fetch(`${baseUrl}/guilds/${GUILD_ID}`, {
+      method: "DELETE",
+      headers,
+    })
+
+    expect([
+      createResponse.status,
+      updateResponse.status,
+      deleteResponse.status,
+      leaveResponse.status,
+    ]).toEqual([403, 403, 403, 403])
+    expect(client.testGuild.channels.create).not.toHaveBeenCalled()
+    expect(client.testGuild.channels.fetch).not.toHaveBeenCalled()
+    expect(client.testGuild.leave).not.toHaveBeenCalled()
+  })
+
+  it("valida channelId antes de buscar o canal", async () => {
+    const client = createClient()
+    const baseUrl = await startTestApi(client)
+    const response = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels/invalid`,
+      {
+        method: "DELETE",
+        headers: {
+          "x-bot-secret": SECRET,
+          "x-actor-discord-id": ACTOR_ID,
+        },
+      }
+    )
+
+    expect(response.status).toBe(400)
+    expect(client.testGuild.channels.fetch).not.toHaveBeenCalled()
+  })
+
+  it("não expõe detalhes de falha do Discord", async () => {
+    const client = createClient({ channelFailure: true })
+    const baseUrl = await startTestApi(client)
+    const response = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-bot-secret": SECRET,
+          "x-actor-discord-id": ACTOR_ID,
+        },
+        body: JSON.stringify({ name: "Hub" }),
+      }
+    )
+    const body = await response.json()
+
+    expect(response.status).toBe(503)
+    expect(body).toEqual({ error: "failed to create voice channel" })
+    expect(JSON.stringify(body)).not.toContain("token")
+  })
+
+  it("atualiza, exclui canal e sai da guild quando autorizado", async () => {
+    const client = createClient()
+    const voiceChannel = {
+      id: "66666666666666666",
+      name: "Hub",
+      type: ChannelType.GuildVoice,
+      setName: vi.fn(async function setName(name) {
+        this.name = name
+      }),
+      delete: vi.fn(),
+    }
+    client.testGuild.channels.fetch.mockResolvedValue(voiceChannel)
+    const baseUrl = await startTestApi(client)
+    const headers = {
+      "Content-Type": "application/json",
+      "x-bot-secret": SECRET,
+      "x-actor-discord-id": ACTOR_ID,
+    }
+
+    const updateResponse = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels/${voiceChannel.id}`,
+      { method: "PATCH", headers, body: JSON.stringify({ name: "Renamed" }) }
+    )
+    const deleteResponse = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels/${voiceChannel.id}`,
+      { method: "DELETE", headers }
+    )
+    const leaveResponse = await fetch(`${baseUrl}/guilds/${GUILD_ID}`, {
+      method: "DELETE",
+      headers,
+    })
+
+    expect([updateResponse.status, deleteResponse.status, leaveResponse.status])
+      .toEqual([200, 200, 200])
+    expect(voiceChannel.setName).toHaveBeenCalledWith("Renamed")
+    expect(voiceChannel.delete).toHaveBeenCalledTimes(1)
+    expect(client.testGuild.leave).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    ["ator ausente", GUILD_ID, undefined, 400],
+    ["guild inválida", "invalid", ACTOR_ID, 400],
+    ["guild inexistente", "77777777777777777", ACTOR_ID, 403],
+  ])("nega remoção com %s sem executar leave", async (_label, guildId, actor, status) => {
+    const client = createClient()
+    const baseUrl = await startTestApi(client)
+    const headers = { "x-bot-secret": SECRET }
+
+    if (actor) {
+      headers["x-actor-discord-id"] = actor
+    }
+
+    const response = await fetch(`${baseUrl}/guilds/${guildId}`, {
+      method: "DELETE",
+      headers,
+    })
+
+    expect(response.status).toBe(status)
+    expect(client.testGuild.leave).not.toHaveBeenCalled()
+  })
+
+  it("confirma tipo de canal antes de alterá-lo", async () => {
+    const client = createClient()
+    const textChannel = {
+      id: "66666666666666666",
+      type: ChannelType.GuildText,
+      setName: vi.fn(),
+    }
+    client.testGuild.channels.fetch.mockResolvedValue(textChannel)
+    const baseUrl = await startTestApi(client)
+    const response = await fetch(
+      `${baseUrl}/guilds/${GUILD_ID}/voice-channels/${textChannel.id}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-bot-secret": SECRET,
+          "x-actor-discord-id": ACTOR_ID,
+        },
+        body: JSON.stringify({ name: "Nope" }),
+      }
+    )
+
+    expect(response.status).toBe(404)
+    expect(textChannel.setName).not.toHaveBeenCalled()
+  })
+})

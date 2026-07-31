@@ -1,49 +1,25 @@
-import { auth } from "@/auth"
 import { redirect } from "next/navigation"
-import { PrismaClient } from "@prisma/client"
 import { isToolEnabled } from "@/lib/user-tools"
+import { requireOperator } from "@/lib/auth/operator-authorization"
 import { getGuilds } from "@/app/dashboard/servers/actions"
+import { getAuthorizedVoiceHub } from "@/lib/voice-hubs/voice-hub-service"
 import VoiceHubEditor from "./VoiceHubEditor"
 
-const prisma = new PrismaClient()
-
 export default async function EditVoiceHubPage({ params }) {
-  const session = await auth()
-
-  if (!session) {
-    redirect("/")
-  }
-
-  const enabled = await isToolEnabled(session.user.id, "voice-channels")
+  const actor = await requireOperator()
+  const enabled = await isToolEnabled(actor.userId, "voice-channels")
 
   if (!enabled) {
     redirect("/dashboard")
   }
 
   const { id } = await params
+  let voiceHub
 
-  const voiceHub = await prisma.voiceHub.findFirst({
-    where: {
-      id,
-      userId: session.user.id,
-    },
-    select: {
-      id: true,
-      guildId: true,
-      channelId: true,
-      name: true,
-      tempChannelName: true,
-      userLimit: true,
-      bitrate: true,
-      keepAliveMinutes: true,
-      ownershipLockMinutes: true,
-      syncWithCategory: true,
-      syncWithHubChannel: true,
-      permissionMode: true,
-    },
-  })
-
-  if (!voiceHub) {
+  try {
+    const context = await getAuthorizedVoiceHub(id)
+    voiceHub = context.voiceHub
+  } catch {
     redirect("/dashboard/voice-channels")
   }
 

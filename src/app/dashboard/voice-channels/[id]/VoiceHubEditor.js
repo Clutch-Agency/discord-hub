@@ -220,6 +220,8 @@ function RoleSelector({
           : "border-white/10 bg-[#19191d]"
       }`}
     >
+      <input type="hidden" name={`${name}Present`} value="true" />
+
       {selectedIds.map((roleId) => (
         <input key={roleId} type="hidden" name={name} value={roleId} />
       ))}
@@ -397,7 +399,7 @@ export default function VoiceHubEditor({ voiceHub, guild }) {
 
   useEffect(() => {
     async function loadRoles() {
-      const result = await getGuildRoles(voiceHub.guildId)
+      const result = await getGuildRoles(voiceHub.id)
 
       if (result.error) {
         setRolesError(true)
@@ -408,7 +410,7 @@ export default function VoiceHubEditor({ voiceHub, guild }) {
     }
 
     loadRoles()
-  }, [voiceHub.guildId])
+  }, [voiceHub.id])
 
   const usesSyncedPermissions = syncWithCategory || syncWithHubChannel
 
