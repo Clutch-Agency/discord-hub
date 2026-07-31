@@ -1,5 +1,5 @@
 const { PrismaClient } = require("@prisma/client")
-const { ChannelType } = require("discord.js")
+const { ChannelType, MessageFlags } = require("discord.js")
 const {
   showTemplateMenu,
   showCategoryMenu,
@@ -28,7 +28,7 @@ async function replyWithWorkflowError(interaction, error) {
     error instanceof WorkflowValidationError
       ? error.publicMessage
       : "Ocorreu um erro inesperado. Execute o comando novamente."
-  const payload = { content, ephemeral: true }
+  const payload = { content, flags: MessageFlags.Ephemeral }
 
   if (interaction.replied || interaction.deferred) {
     await Promise.resolve(interaction.followUp?.(payload)).catch(() => {})
@@ -63,7 +63,7 @@ function createInteractionHandler(dependencies = {}) {
                 "Esse comando só funciona dentro de um servidor."
               ),
             ],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           })
           return
         }
@@ -84,7 +84,7 @@ function createInteractionHandler(dependencies = {}) {
                 "Faça login na plataforma web com este mesmo usuário do Discord antes de usar esse comando."
               ),
             ],
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           })
           return
         }
@@ -102,7 +102,7 @@ function createInteractionHandler(dependencies = {}) {
           await interaction.reply({
             content:
               "A ferramenta de templates não está ativada para sua conta. Ative-a no painel web.",
-            ephemeral: true,
+            flags: MessageFlags.Ephemeral,
           })
           return
         }
@@ -248,7 +248,7 @@ function createInteractionHandler(dependencies = {}) {
             ),
           ],
           components: [new ActionRowBuilder().addComponents(noButton, yesButton)],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         return
       }
@@ -370,7 +370,7 @@ function createInteractionHandler(dependencies = {}) {
           embeds: [
             baseEmbed("Cargo criado", `Cargo **${newRole.name}** criado com sucesso.`),
           ],
-          ephemeral: true,
+          flags: MessageFlags.Ephemeral,
         })
         await commands.showRoleMenu(interaction, job, workflowJobs, job.rolePage)
         return

@@ -13,9 +13,9 @@ import {
 
 const ROLE_FIELDS = ["permissionRoles", "ignoredRoles", "moderatorRoles"]
 
-function invalidGuildId() {
+function invalidGuildId(publicMessage = "O servidor selecionado é inválido.") {
   throw new AuthorizationError(AUTHORIZATION_ERROR_CODES.INVALID_INPUT, {
-    publicMessage: "O servidor selecionado é inválido.",
+    publicMessage,
     field: "guildId",
   })
 }
@@ -37,6 +37,11 @@ async function findVoiceHubContext(id, actor, dependencies) {
 
 export async function createVoiceHubForOperator(guildId, dependencies) {
   const actor = await dependencies.requireOperator()
+
+  if (typeof guildId !== "string" || guildId.trim().length === 0) {
+    invalidGuildId("Selecione um servidor para continuar.")
+  }
+
   const normalizedGuildId = normalizeDiscordId(guildId)
 
   if (!normalizedGuildId) {

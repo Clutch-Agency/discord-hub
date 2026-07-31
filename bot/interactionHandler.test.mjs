@@ -1,5 +1,6 @@
 import { createRequire } from "node:module"
 import { describe, expect, it, vi } from "vitest"
+import { MessageFlags } from "discord.js"
 
 const require = createRequire(import.meta.url)
 const { createInteractionHandler } = require("./interactionHandler.js")
@@ -57,7 +58,7 @@ describe("template interaction handler", () => {
     expect(showCategoryMenu).not.toHaveBeenCalled()
     expect(interaction.reply).toHaveBeenCalledWith(
       expect.objectContaining({
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
         content: expect.stringContaining("não pertence"),
       })
     )

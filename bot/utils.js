@@ -1,4 +1,10 @@
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require("discord.js")
+const {
+  EmbedBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  MessageFlags,
+} = require("discord.js")
 
 const PAGE_SIZE = 24
 
@@ -33,7 +39,7 @@ function paginationRow(jobId, prefix, page, totalItems) {
 
 async function respond(interaction, payload) {
   if (interaction.replied || interaction.deferred) {
-    await interaction.followUp({ ...payload, ephemeral: true })
+    await interaction.followUp({ ...payload, flags: MessageFlags.Ephemeral })
     return
   }
 
@@ -42,7 +48,7 @@ async function respond(interaction, payload) {
     return
   }
 
-  await interaction.reply({ ...payload, ephemeral: true })
+  await interaction.reply({ ...payload, flags: MessageFlags.Ephemeral })
 }
 
 module.exports = {

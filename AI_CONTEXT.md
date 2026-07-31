@@ -1,6 +1,6 @@
 # AI_CONTEXT — Clutch Hub
 
-Atualizado em 31/07/2026 após a Fase 3A.
+Atualizado em 31/07/2026 após a Fase 3B.1.
 
 # 1. Visão Geral
 
@@ -11,8 +11,10 @@ bot separado. O público inferido é um operador individual ou pequeno grupo
 explicitamente autorizado.
 
 O núcleo funcional, autenticação/autorização e validações de domínio estão
-implementados. A instalação oficial agora é plug & play com Docker Compose,
-PostgreSQL local persistente, migrations e registro de comandos automáticos.
+implementados. A instalação oficial é plug & play com Docker Compose,
+PostgreSQL local persistente, migrations e registro de comandos automáticos;
+o stack da Fase 3A foi homologado em host Docker real. A Fase 3B.1 corrigiu os
+warnings de OpenSSL/Discord e o erro esperado de guild ausente no VoiceHub.
 Consistência/compensação Discord ↔ banco e reconciliação pós-restart permanecem
 para fases posteriores.
 
@@ -29,8 +31,8 @@ para fases posteriores.
   banco.
 - **Testes:** Vitest, incluindo testes HTTP locais e integração PostgreSQL
   opcional.
-- **Hospedagem:** self-hosted com Docker Compose; imagens Node 22 Debian slim e
-  PostgreSQL Alpine. Não há dependência de Vercel ou Supabase.
+- **Hospedagem:** self-hosted com Docker Compose; imagens Node 22 Debian slim
+  com OpenSSL e PostgreSQL Alpine. Não há dependência de Vercel ou Supabase.
 - **Serviços externos:** Discord OAuth, REST e Gateway. Supabase é apenas uma
   alternativa PostgreSQL customizada fora do Compose.
 
@@ -128,6 +130,8 @@ roles internas, registro local ou recuperação de senha.
 - **Aplicar template:** slash command conduz seleção de template, categoria e
   cargos; jobs são vinculados a usuário/guild e expiram em 15 minutos.
 - **VoiceHubs:** cria/edita/remove canal Hub, roles e políticas de sala.
+  A criação exige guild selecionada em duas camadas e apresenta erro inline
+  acessível, sem encaminhar validação esperada à error boundary do Next.js.
 - **Salas temporárias:** cria, move, renomeia e remove salas conforme presença,
   permissões e retenção; estado não sobrevive integralmente a restart.
 - **Instalação operacional:** Compose cria banco, aplica migrations, registra
@@ -172,6 +176,8 @@ Usuário → Discord OAuth → sessão Prisma → requireOperator
 - `src/lib/templates/*`: contratos e ordem de canais.
 - `bot/api.js`: fronteira privada e efeitos administrativos no Discord.
 - `bot/interactionHandler.js`: workflow do slash command.
+- `bot/utils.js`: respostas privadas usam `MessageFlags.Ephemeral`, sem a opção
+  `ephemeral` depreciada pelo discord.js 14.27.0.
 - `bot/voice-hubs.js`: ciclo de vida das salas temporárias.
 - `prisma/schema.prisma`: contrato persistente.
 - `compose.yaml`: topologia, dependências, healthchecks e volume.
@@ -201,16 +207,16 @@ Usuário → Discord OAuth → sessão Prisma → requireOperator
 - Não há rate limiting, observabilidade estruturada, fila ou cache.
 - Seleção paginada de cargos no workflow pode substituir página anterior.
 - OAuth/Discord reais e o stack Docker não possuem E2E automatizado.
-- Docker não estava instalado no ambiente que implementou a Fase 3A: sintaxe,
-  testes, build e Prisma foram validados, mas containers/health/volume/restart
-  ainda precisam de smoke test em host Docker.
+- O stack 3A foi homologado em host Docker real, inclusive persistência e
+  backup. As correções 3B.1 ainda precisam de novo smoke nesse host porque
+  Docker não está disponível no ambiente do agente.
 - Tags de Node/PostgreSQL são fixas e precisam de revisão periódica de segurança.
 - Registro de comandos globais falhando bloqueia o bot por desenho.
 
 # 14. Próximos Passos
 
-1. Executar smoke test documentado em Docker real (amd64 e, se disponível,
-   arm64), incluindo restart, persistência, backup e restore.
+1. Reexecutar o smoke Docker para confirmar ausência dos warnings de OpenSSL e
+   `ephemeral` e validar o erro inline de guild ausente.
 2. Fase 2B: idempotência/compensação Discord ↔ PostgreSQL.
 3. Persistir e reconciliar salas temporárias após restart.
 4. Rodar integração PostgreSQL descartável em CI.
@@ -230,6 +236,8 @@ Usuário → Discord OAuth → sessão Prisma → requireOperator
 - Não altere schema sem migration incremental e autorização explícita.
 - Não adicione Redis, filas, proxy ou observabilidade sem necessidade aprovada.
 - Preserve o fluxo `postgres healthy → migrate → bot healthy → web`.
+- Preserve OpenSSL na base compartilhada dos stages que executam Prisma e use
+  `MessageFlags.Ephemeral` em respostas privadas do Discord.
 - Use `prisma migrate deploy` em produção; nunca `db push`.
 - Não grave segredos em Dockerfile, Compose, logs ou documentação.
 - Grandes refatorações exigem proposta prévia; mudanças de Docker devem manter

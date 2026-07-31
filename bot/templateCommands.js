@@ -8,6 +8,7 @@ const {
   TextInputStyle,
   EmbedBuilder,
   ChannelType,
+  MessageFlags,
 } = require("discord.js")
 const { PrismaClient } = require("@prisma/client")
 const { baseEmbed, paginate, paginationRow, respond } = require("./utils")
@@ -41,7 +42,7 @@ async function showTemplateMenu(interaction, userId, jobs) {
   if (templates.length === 0) {
     await interaction.reply({
       embeds: [baseEmbed("Nenhum template encontrado", "Você ainda não criou nenhum template na plataforma web.")],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     })
     return
   }
@@ -52,7 +53,7 @@ async function showTemplateMenu(interaction, userId, jobs) {
   ) {
     await interaction.reply({
       embeds: [baseEmbed("Templates indisponíveis", "Revise a quantidade e os nomes dos templates no painel web antes de continuar.")],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     })
     return
   }
@@ -68,7 +69,7 @@ async function showTemplateMenu(interaction, userId, jobs) {
   await interaction.reply({
     embeds: [baseEmbed("Aplicar template", "Escolha o template que deseja aplicar neste servidor.")],
     components: [new ActionRowBuilder().addComponents(menu)],
-    ephemeral: true,
+    flags: MessageFlags.Ephemeral,
   })
 }
 

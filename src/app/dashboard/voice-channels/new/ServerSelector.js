@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { forwardRef, useEffect, useMemo, useRef, useState } from "react"
 import {
   Check,
   ChevronDown,
@@ -31,10 +31,12 @@ function ServerAvatar({ guild, size = "md" }) {
   )
 }
 
-export default function ServerSelector({ guilds }) {
+const ServerSelector = forwardRef(function ServerSelector(
+  { guilds, selectedGuildId, onSelect, errorMessage },
+  triggerRef
+) {
   const [isOpen, setIsOpen] = useState(false)
   const [query, setQuery] = useState("")
-  const [selectedGuildId, setSelectedGuildId] = useState("")
   const containerRef = useRef(null)
 
   const selectedGuild = guilds.find((guild) => guild.id === selectedGuildId)
@@ -69,20 +71,29 @@ export default function ServerSelector({ guilds }) {
   }, [])
 
   function selectGuild(guildId) {
-    setSelectedGuildId(guildId)
+    onSelect(guildId)
     setQuery("")
     setIsOpen(false)
   }
 
   return (
     <div ref={containerRef} className="relative">
-      <input type="hidden" name="guildId" value={selectedGuildId} required />
+      <input type="hidden" name="guildId" value={selectedGuildId} />
 
       <button
+        ref={triggerRef}
+        id="guildId-selector"
         type="button"
         onClick={() => setIsOpen((currentValue) => !currentValue)}
+        aria-labelledby="guildId-label guildId-selector"
+        aria-describedby={errorMessage ? "guildId-error" : undefined}
+        aria-expanded={isOpen}
+        aria-controls="guildId-options"
+        aria-haspopup="menu"
         className={`flex w-full items-center justify-between gap-4 rounded-2xl border px-4 py-3.5 text-left transition-colors ${
-          isOpen
+          errorMessage
+            ? "border-red-400/70 bg-red-500/[0.045] ring-2 ring-red-500/10"
+            : isOpen
             ? "border-clutch-pink bg-clutch-pink/[0.06] ring-2 ring-clutch-pink/15"
             : "border-white/10 bg-[#17171a] hover:border-white/20"
         }`}
@@ -119,8 +130,23 @@ export default function ServerSelector({ guilds }) {
         />
       </button>
 
+      {errorMessage ? (
+        <p
+          id="guildId-error"
+          role="alert"
+          aria-live="polite"
+          className="mt-2 text-sm font-medium text-red-300"
+        >
+          {errorMessage}
+        </p>
+      ) : null}
+
       {isOpen ? (
-        <div className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#1a1a1e] shadow-2xl shadow-black/50">
+        <div
+          id="guildId-options"
+          role="menu"
+          className="absolute z-30 mt-2 w-full overflow-hidden rounded-2xl border border-white/10 bg-[#1a1a1e] shadow-2xl shadow-black/50"
+        >
           <div className="border-b border-white/10 p-3">
             <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-[#121215] px-3 py-2.5 focus-within:border-clutch-pink/60">
               <Search size={17} className="shrink-0 text-clutch-gray-lighter" />
@@ -156,6 +182,8 @@ export default function ServerSelector({ guilds }) {
                   <button
                     key={guild.id}
                     type="button"
+                    role="menuitemradio"
+                    aria-checked={isSelected}
                     onClick={() => selectGuild(guild.id)}
                     className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition-colors ${
                       isSelected
@@ -204,4 +232,8 @@ export default function ServerSelector({ guilds }) {
       ) : null}
     </div>
   )
-}
+})
+
+ServerSelector.displayName = "ServerSelector"
+
+export default ServerSelector

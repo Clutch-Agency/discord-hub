@@ -2,7 +2,12 @@
 
 ARG NODE_IMAGE=node:22.23.1-bookworm-slim
 
-FROM ${NODE_IMAGE} AS dependencies
+FROM ${NODE_IMAGE} AS prisma-base
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM prisma-base AS dependencies
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY package.json package-lock.json ./
@@ -16,7 +21,7 @@ ENV DISCORD_CLIENT_ID=11111111111111111
 ENV DISCORD_CLIENT_SECRET=build-only-placeholder
 RUN npm run build
 
-FROM ${NODE_IMAGE} AS web
+FROM prisma-base AS web
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
@@ -34,7 +39,7 @@ FROM dependencies AS production-dependencies
 COPY prisma ./prisma
 RUN npx prisma generate && npm prune --omit=dev
 
-FROM ${NODE_IMAGE} AS worker
+FROM prisma-base AS worker
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_modules
@@ -46,4 +51,3 @@ COPY --chown=node:node scripts/container-entrypoint.mjs ./scripts/container-entr
 USER node
 EXPOSE 3001
 CMD ["node", "scripts/container-entrypoint.mjs", "--database", "node", "bot/index.js"]
-

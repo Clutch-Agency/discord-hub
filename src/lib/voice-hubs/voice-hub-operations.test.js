@@ -115,6 +115,34 @@ describe("VoiceHub operations", () => {
     expect(createVoiceHubRecord).not.toHaveBeenCalled()
   })
 
+  it.each([
+    [undefined, "Selecione um servidor para continuar."],
+    ["", "Selecione um servidor para continuar."],
+    ["not-a-snowflake", "O servidor selecionado é inválido."],
+  ])("rejeita guild inválida %s antes de bot ou Prisma", async (guildId, message) => {
+    const requireGuildAuthorization = vi.fn()
+    const createVoiceChannel = vi.fn()
+    const createVoiceHubRecord = vi.fn()
+
+    await expect(
+      createVoiceHubForOperator(
+        guildId,
+        baseDependencies({
+          requireGuildAuthorization,
+          createVoiceChannel,
+          createVoiceHubRecord,
+        })
+      )
+    ).rejects.toMatchObject({
+      code: AUTHORIZATION_ERROR_CODES.INVALID_INPUT,
+      field: "guildId",
+      publicMessage: message,
+    })
+    expect(requireGuildAuthorization).not.toHaveBeenCalled()
+    expect(createVoiceChannel).not.toHaveBeenCalled()
+    expect(createVoiceHubRecord).not.toHaveBeenCalled()
+  })
+
   it("não cria canal ou registro quando a guild é negada", async () => {
     const createVoiceChannel = vi.fn()
     const createVoiceHubRecord = vi.fn()
@@ -136,6 +164,27 @@ describe("VoiceHub operations", () => {
       code: AUTHORIZATION_ERROR_CODES.GUILD_ACCESS_DENIED,
     })
     expect(createVoiceChannel).not.toHaveBeenCalled()
+    expect(createVoiceHubRecord).not.toHaveBeenCalled()
+  })
+
+  it("não persiste quando o bot está indisponível", async () => {
+    const createVoiceHubRecord = vi.fn()
+
+    await expect(
+      createVoiceHubForOperator(
+        GUILD_ID,
+        baseDependencies({
+          createVoiceChannel: async () => {
+            throw new AuthorizationError(
+              AUTHORIZATION_ERROR_CODES.AUTHORIZATION_UNAVAILABLE
+            )
+          },
+          createVoiceHubRecord,
+        })
+      )
+    ).rejects.toMatchObject({
+      code: AUTHORIZATION_ERROR_CODES.AUTHORIZATION_UNAVAILABLE,
+    })
     expect(createVoiceHubRecord).not.toHaveBeenCalled()
   })
 
