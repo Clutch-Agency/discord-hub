@@ -1,4 +1,8 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js")
+const {
+  normalizeBitrate,
+  normalizeUserLimit,
+} = require("./voice-hub-utils")
 
 const activeTemporaryChannels = new Map()
 const creationLocks = new Set()
@@ -161,17 +165,6 @@ function getPermissionOverwrites(hub, hubChannel, guild, member) {
   mergeModeratorOverwrites(overwrites, hub.moderatorRoles || [])
 
   return overwrites
-}
-
-function normalizeBitrate(hubBitrate, guildMaximumBitrate) {
-  const requestedBitrate = Number(hubBitrate || 64000)
-  const maximumBitrate = Number(guildMaximumBitrate || 96000)
-
-  return Math.min(Math.max(8000, requestedBitrate), maximumBitrate)
-}
-
-function normalizeUserLimit(userLimit) {
-  return Math.min(Math.max(0, Number(userLimit || 0)), 99)
 }
 
 async function deleteTemporaryChannel(client, channelId) {

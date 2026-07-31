@@ -1,0 +1,6 @@
+[mcp_servers.shadcn]
+command = "npx"
+args = ["-y", "shadcn@4.16.0", "mcp"]
+enabled = true
+required = false
+

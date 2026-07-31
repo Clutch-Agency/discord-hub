@@ -12,7 +12,7 @@ const rest = new REST().setToken(process.env.DISCORD_BOT_TOKEN)
 
 async function deploy() {
   const data = await rest.put(
-    Routes.applicationCommands(process.env.AUTH_DISCORD_ID),
+    Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
     { body: commands }
   )
   console.log(`${data.length} comando(s) registrado(s) com sucesso`)

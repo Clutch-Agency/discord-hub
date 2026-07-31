@@ -3,10 +3,19 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"dotenv -e .env -- next dev\" \"node bot/index.js\"",
+    "dev": "concurrently \"npm run dev:web\" \"npm run dev:bot\"",
+    "dev:web": "dotenv -e .env -- next dev",
+    "dev:bot": "node bot/index.js",
+    "prebuild": "npm run prisma:generate",
     "build": "next build",
-    "start": "concurrently \"dotenv -e .env -- next start\" \"node bot/index.js\"",
-    "lint": "eslint"
+    "start": "concurrently \"npm run start:web\" \"npm run start:bot\"",
+    "start:web": "dotenv -e .env -- next start",
+    "start:bot": "node bot/index.js",
+    "deploy:commands": "node bot/deploy-commands.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -25,11 +34,13 @@
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.1",
     "@tailwindcss/postcss": "^4",
     "concurrently": "^10.0.4",
     "dotenv-cli": "^7.4.4",
     "eslint": "^9",
-    "eslint-config-next": "15.1.0",
-    "tailwindcss": "^4"
+    "eslint-config-next": "^15.5.22",
+    "tailwindcss": "^4",
+    "vitest": "^4.1.10"
   }
 }
