@@ -16,9 +16,9 @@ direção.
 - **Público-alvo:** operador autorizado e administradores dos servidores
   Discord controlados pela instalação.
 - **Estágio atual:** MVP/protótipo avançado em estabilização, com jornadas
-  funcionais ponta a ponta e testes unitários iniciais, mas ainda sem
-  autorização adequada por operador/guild, observabilidade ou robustez para
-  exposição pública.
+  funcionais ponta a ponta, fundação central de autenticação/autorização e
+  testes unitários iniciais. Somente a leitura de cargos de guild usa a nova
+  fundação; a migração das demais operações ocorrerá na Fase 1B.
 
 # 2. Stack
 
@@ -89,7 +89,13 @@ Discord Gateway
 - `src/app/dashboard/`: área autenticada e domínios de servidores, templates e Hubs de voz.
 - `src/components/`: Sidebar, menu de usuário e componentes reutilizáveis.
 - `src/lib/`: Prisma, catálogo/estado de ferramentas e normalização de nomes Discord.
+- `src/lib/auth/`: ator autenticado, allowlist, autorização de operador e erros
+  previsíveis.
+- `src/lib/discord/`: validação de IDs, autorização web por guild, cliente da
+  API privada e orquestração do fluxo piloto de cargos.
 - `bot/`: processo Discord, API interna, comando de templates e engine de salas temporárias.
+- `bot/guild-authorization.js`: autorização pelo estado atual da guild no
+  Discord.
 - `prisma/`: schema, migrations PostgreSQL e lock do provider.
 - `public/`: logos e assets estáticos.
 - `.ai/`: skills, prompts, checklists e fundamentos compartilhados por agentes.
@@ -132,13 +138,20 @@ Discord Gateway
 
 ## Validação
 
-Não existe padrão centralizado nem biblioteca de schema validation. Actions fazem verificações manuais básicas (`trim`, presença, `parseInt`), geralmente insuficientes para enums, faixas, comprimentos e autorização por guild.
+Não existe biblioteca de schema validation. A fundação de autorização valida
+IDs Discord e configuração com funções específicas; as demais Actions ainda
+fazem verificações manuais básicas (`trim`, presença, `parseInt`), geralmente
+insuficientes para enums, faixas e comprimentos.
 
 ## Erros
 
-- Falhas esperadas frequentemente retornam vazio, redirecionam ou lançam `Error`.
+- Autenticação/autorização central usa `AuthorizationError`, códigos estáveis e
+  conversão para mensagens públicas sem detalhes internos.
+- Fora do fluxo piloto, falhas esperadas ainda frequentemente retornam vazio,
+  redirecionam ou lançam `Error`.
 - Integração com o bot usa `try/catch` e `console.log`.
-- A API Express responde JSON com status 400/401/404/500.
+- A API Express responde JSON com status 400/401/403/404/500/503, conforme a
+  rota e a categoria da falha.
 - Não há error boundaries personalizados, logging estruturado, códigos de erro de domínio ou observabilidade.
 
 # 6. Banco de Dados
@@ -184,12 +197,21 @@ validar TLS, pooling, limites, backup/restore e executar migrations no destino.
 - Login exclusivo por Discord OAuth.
 - Primeiro login cria implicitamente User e Account via PrismaAdapter.
 - Sessão usa estratégia `database`; callback adiciona `user.id` à sessão.
+- `requireAuthenticatedActor` lê a sessão no servidor e resolve a conta Discord
+  persistida; retorna somente `{userId, discordUserId}`.
+- `requireOperator` compara `discordUserId` com a única fonte de allowlist,
+  `ALLOWED_DISCORD_USER_IDS`. Configuração ausente, vazia ou inválida nega o
+  acesso.
+- `requireGuildAuthorization` valida `guildId` e consulta a API privada. O bot
+  busca o membro atual e exige owner, `Administrator` ou `ManageGuild`.
 - Logout chama `signOut()` por Server Action.
 - Não há senha, recuperação de senha ou registro separado.
 - Não há `middleware.js`. Layouts, páginas e actions chamam `auth()` e redirecionam usuários anônimos.
 - Ferramentas são autorizadas por `UserTool`, mas essa checagem não é uniforme em todas as actions.
-- Não existem roles SaaS.
-- A autorização sobre guilds Discord é atualmente insuficiente: estar autenticado não comprova ser administrador da guild.
+- Não existem roles SaaS; “operador” é uma allowlist de IDs Discord.
+- A leitura de cargos no editor de Hub é o único fluxo piloto protegido por
+  operador + guild. Estar autenticado ainda não protege automaticamente as
+  demais operações.
 
 # 8. Funcionalidades
 
@@ -225,6 +247,10 @@ Ao entrar no Hub, um membro não ignorado recebe uma nova sala de voz e é movid
 
 Salas podem herdar overwrites da categoria/canal Hub ou usar modos customizados allow-except/deny-except. Owner e moderadores recebem permissões adicionais.
 
+O carregamento de cargos da guild agora deriva o ator da sessão, exige
+allowlist, confirma no bot que ele administra a guild e repete a verificação no
+endpoint de cargos antes de devolver os dados.
+
 # 9. Fluxo da Aplicação
 
 ```text
@@ -259,6 +285,17 @@ O fluxo de template ocorre no cliente Discord; o fluxo de configuração ocorre 
 # 11. Componentes Críticos
 
 - `src/auth.js`: configuração Auth.js/Discord/Prisma.
+- `src/lib/auth/authenticated-actor.js`: identidade interna e Discord derivada
+  exclusivamente da sessão e do banco.
+- `src/lib/auth/operator-allowlist.js`: parser e comparação únicos da allowlist.
+- `src/lib/auth/operator-authorization.js`: composição de autenticação e
+  allowlist.
+- `src/lib/auth/authorization-error.js`: categorias e mensagens públicas
+  previsíveis.
+- `src/lib/discord/guild-authorization.js`: autorização central por guild no
+  processo web.
+- `src/lib/discord/bot-api-client.js`: consulta privada de autorização e cargos.
+- `bot/guild-authorization.js`: verificação de owner/permissões no Discord.
 - `src/lib/prisma.js`: singleton Prisma usado por parte da aplicação.
 - `src/lib/user-tools.js`: catálogo efetivo e persistência de feature toggles.
 - `src/app/dashboard/layout.js`: guarda principal da área autenticada.
@@ -296,14 +333,18 @@ Não há dependências de validação, filas, cache distribuído ou logging estr
 
 ## Riscos críticos
 
-- **Autorização horizontal de guilds:** qualquer autenticado pode potencialmente consultar cargos, criar Hub ou remover o bot de uma guild sem comprovar administração.
+- **Migração incompleta da autorização:** a leitura de cargos foi corrigida,
+  mas listagem/remoção de guilds e criação/edição/exclusão de Hubs ainda
+  não usam a fundação central.
 - **IDOR na reordenação:** `updateChannelOrder` pode receber IDs de canais fora do template validado.
 - **Estado volátil:** salas temporárias e workflows existem apenas em RAM; restart pode deixar canais órfãos.
 - **Perda de roles do Hub:** a query da página de edição não seleciona os arrays de cargos; salvar pode zerar configurações.
 
 ## Limitações
 
-- A cobertura automatizada ainda é mínima: quatro testes smoke de módulos puros.
+- A cobertura automatizada inclui a fundação de autenticação/autorização e
+  testes smoke anteriores, mas ainda não possui integração real com Auth.js,
+  PostgreSQL ou Discord.
 - `npm run lint` executa, mas ainda reporta avisos de `@next/next/no-img-element`.
 - Não há transação distribuída/compensação entre Discord e banco.
 - Várias instâncias de `PrismaClient` são criadas fora do singleton.
@@ -336,12 +377,13 @@ Não há dependências de validação, filas, cache distribuído ou logging estr
 
 Prioridade natural:
 
-1. corrigir autorização por guild e IDOR;
+1. migrar na Fase 1B todas as operações administrativas restantes para a
+   fundação e corrigir os IDORs;
 2. incluir corretamente roles no editor;
 3. persistir/reconciliar TemporaryVoiceChannel;
-4. centralizar Prisma e adicionar validação;
-5. corrigir lint e alinhar versões Next/ESLint;
-6. criar testes unitários, integração e E2E;
+4. centralizar Prisma e ampliar validação;
+5. corrigir warnings de lint;
+6. criar testes de integração e E2E;
 7. implementar compensações para efeitos Discord + banco;
 8. aplicar ou remover `ownershipLockMinutes`;
 9. adicionar TTL aos workflows, paginação e observabilidade;
@@ -363,6 +405,8 @@ Esses passos são inferidos da dívida atual; não existe roadmap formal version
 - Mantenha componentes específicos próximos da rota e compartilhe apenas o que tiver uso real.
 - Não introduza uma nova camada/padrão amplo sem justificar e alinhar a migração.
 - Toda action deve validar sessão, ownership do recurso, guild administrável, tipos, comprimentos e faixas.
+- Reutilize `requireAuthenticatedActor`, `requireOperator` e
+  `requireGuildAuthorization`; não leia ou compare a allowlist em outro lugar.
 - Nunca confie em IDs, hidden inputs ou arrays enviados pelo cliente.
 - Em operações Discord + banco, planeje idempotência e compensação.
 - Preserve a API Express em loopback; não exponha `BOT_API_SECRET` ao navegador.

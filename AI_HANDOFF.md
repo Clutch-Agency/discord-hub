@@ -1,393 +1,493 @@
-# AI HANDOFF — Fase IA-01: Infraestrutura dos Agentes
+# AI HANDOFF — Fase 1A: Fundação de Autenticação e Autorização
 
-## 1. Status
+## 1. Status da fase
 
 **Concluída em 31/07/2026.**
 
-A infraestrutura permanente de contexto, frontend, revisão e MCP foi criada. A
-fase não alterou código funcional, interface, schema, migrations, Docker,
-dependências npm ou regras de negócio.
+A fase criou a fundação central de autenticação, allowlist de operadores,
+autorização por guild e erros previsíveis. Somente o carregamento de cargos de
+uma guild foi migrado como fluxo piloto. A aplicação completa nas demais
+operações permanece para a Fase 1B.
 
 ## 2. Objetivo executado
 
-- avaliar Graphify com base em documentação oficial;
-- comparar 21st.dev Magic/21st MCP, Builder MCP e alternativas maduras;
-- escolher no máximo uma solução principal de apoio visual;
-- criar uma skill permanente de frontend;
-- organizar contexto reutilizável em `.ai/`;
-- integrar a solução escolhida ao Codex e preparar Claude Code;
-- revisar `AI_RULES.md` e corrigir inconsistências;
-- auditar o acoplamento real ao Supabase;
-- registrar decisões e atualizar o contexto permanente;
-- validar o estado técnico sem implementar funcionalidades.
+- mapear o modelo anterior de autenticação e autorização;
+- definir uma identidade mínima obtida exclusivamente no servidor;
+- implementar `ALLOWED_DISCORD_USER_IDS` como fonte única da allowlist;
+- compor autenticação e autorização de operador;
+- confirmar autorização por guild no estado atual do Discord;
+- criar categorias de erro e mensagens públicas seguras;
+- validar IDs e configurações em runtime;
+- aplicar a fundação em um único fluxo administrativo somente leitura;
+- adicionar testes permitidos, negados, inválidos e de indisponibilidade;
+- preservar schema, migrations, dependências e demais regras de negócio.
 
-## 3. Documentação lida
+## 3. Documentação e skills lidas
 
-- `README.md`
-- `PROJECT_DIRECTION.md`
-- `AGENTS.md`
-- `AI_RULES.md`
-- `AI_CONTEXT.md`
-- `PROJECT_REPORT.md`
-- `DECISIONS.md`
-- `AI_HANDOFF.md` anterior
-- prompt completo anexado da Fase IA-01
+Na ordem exigida:
 
-O código, schema, migrations, dependências e arquivos de ambiente foram
-inspecionados. Valores secretos não foram exibidos nem documentados.
+1. `PROJECT_DIRECTION.md`;
+2. `DECISIONS.md`;
+3. `AI_RULES.md`;
+4. `AGENTS.md`;
+5. `AI_CONTEXT.md`;
+6. `PROJECT_REPORT.md`;
+7. `README.md`;
+8. `AI_HANDOFF.md` anterior.
 
-## 4. Decisões resumidas
+Skill obrigatória lida integralmente:
 
-| Tema | Decisão |
-| --- | --- |
-| Graphify | Não adotar nesta fase |
-| Solução visual principal | MCP oficial do shadcn, opcional |
-| 21st.dev | Não adotar |
-| Builder MCP | Não adotar |
-| Contexto de agentes | Estrutura canônica em `.ai/` |
-| Skill de frontend | Canônica em `.ai/`, descoberta no Codex por adaptador |
-| Codex MCP | `.codex/config.toml` versionado |
-| Claude Code MCP | `.mcp.json` versionado |
-| Supabase | Apenas hospedagem PostgreSQL via `DATABASE_URL` |
-| Próxima fase | Fase 1 — segurança e autorização |
+- `.ai/skills/backend-architect/SKILL.md`.
 
-As decisões completas foram registradas nas ADR-018, ADR-019 e ADR-020 de
-`DECISIONS.md`.
+Também foram consultadas fontes oficiais compatíveis:
 
-## 5. Avaliação do Graphify
+- segurança de dados e Server Actions do Next.js 15:
+  <https://nextjs.org/docs/15/app/guides/data-security>;
+- autenticação no App Router:
+  <https://nextjs.org/docs/app/guides/authentication>;
+- configuração básica Auth.js e `auth()`:
+  <https://authjs.dev/>;
+- `GuildMemberManager.fetch` no discord.js 14.27.0:
+  <https://discord.js.org/docs/packages/discord.js/14.27.0/GuildMemberManager:Class>;
+- flags `Administrator` e `ManageGuild` no discord.js 14.27.0:
+  <https://discord.js.org/docs/packages/discord.js/14.27.0/PermissionFlagsBits:Variable>;
+- permissões oficiais do Discord:
+  <https://docs.discord.com/developers/topics/permissions>.
 
-### O que foi verificado
+A documentação local `node_modules/next/dist/docs/` continua ausente. Nenhuma
+API Next nova foi introduzida; a documentação oficial da versão 15 foi usada
+para confirmar que Server Actions devem ser tratadas como endpoints públicos.
 
-Graphify oferece CLI local, parsing por AST/tree-sitter, grafo de código, skill
-para agentes e servidor MCP. O pacote oficial no PyPI é `graphifyy`; o comando é
-`graphify`. Instalações por projeto podem criar skills para Codex e Claude.
+## 4. Diagnóstico do modelo anterior
 
-Referências:
+### Sessão e identidade
 
-- <https://graphify.com/what-is-graphify>
-- <https://graphify.com/docs/mcp-tools>
-- <https://github.com/Graphify-Labs/graphify>
-- <https://pypi.org/project/graphifyy/>
+- `src/auth.js` usa Auth.js/NextAuth 5 beta com Discord, PrismaAdapter e sessão
+  em banco.
+- O callback de sessão grava o CUID interno de `User` em `session.user.id`.
+- O ID Discord não fica diretamente na sessão.
+- A associação confiável está em `Account`, por
+  `provider="discord"` + `providerAccountId`.
+- Layouts, páginas e actions repetiam `auth()` sem uma função central.
 
-### Estado local encontrado
+### Guilds e permissões
 
-- `graphify`: ausente;
-- `uv`: ausente;
-- `python`: somente o alias da Microsoft Store, sem runtime funcional
-  comprovado;
-- repositório pequeno e navegável com busca textual e leitura direta.
+- `getGuilds` devolvia todas as guilds do cache do bot.
+- As operações web enviavam `guildId` recebido do cliente para a API privada.
+- A API exigia apenas `BOT_API_SECRET`; não recebia identidade do ator.
+- Nenhuma operação da API verificava owner, `Administrator` ou `ManageGuild`.
+- `getGuildRoles`, `createVoiceHub` e `removeGuild` eram exemplos diretos de
+  acesso horizontal possível.
 
-### Decisão e motivo
+### Duplicação e confiança no cliente
 
-Não instalar. A ferramenta é recente, o ganho atual não compensa uma nova
-dependência operacional em Python e o prompt proíbe infraestrutura experimental
-sem benefício claro.
+- `auth()` e tratamento de ausência de sessão estavam espalhados pelas actions.
+- `session.user.id` era usado diretamente sem resolver uma identidade Discord
+  mínima compartilhada.
+- `guildId`, IDs de recurso, `toolKey`, enums, números e arrays ainda possuem
+  validação inconsistente.
+- `updateChannelOrder` continua com IDOR porque aceita IDs de canais fora do
+  template validado.
 
-### Artefatos
+### Variáveis relevantes
 
-- nenhum runtime ou CLI instalado;
-- nenhuma skill Graphify criada;
-- nenhum MCP Graphify configurado;
-- nenhum grafo gerado;
-- `graphify-out/` adicionado ao `.gitignore` preventivamente.
+- `AUTH_SECRET`, `DISCORD_CLIENT_ID` e `DISCORD_CLIENT_SECRET`: autenticação;
+- `DATABASE_URL`: persistência de conta e sessão;
+- `BOT_API_SECRET` e `BOT_API_PORT`: canal privado web → bot;
+- `ALLOWED_DISCORD_USER_IDS`: nova configuração central de operadores.
 
-### Reavaliação futura
+Valores reais não foram lidos, reproduzidos ou enviados a serviços externos.
 
-Se adotado, usar ambiente isolado, pacote oficial, versão fixada, instalação por
-projeto e skills compatíveis com os agentes utilizados. Versionar somente
-configuração/skills estáveis; ignorar grafos derivados.
+## 5. Modelo de autenticação implementado
 
-## 6. Comparação das ferramentas de design
-
-### 21st.dev MCP
-
-O antigo Magic MCP foi sucedido pelo 21st MCP. Oferece busca, leitura e
-instalação de componentes, mas depende de serviço remoto, autenticação, limites
-no plano gratuito e créditos em fluxos de geração.
-
-- <https://docs.21st.dev/mcp>
-- <https://github.com/21st-dev/magic-mcp>
-
-**Resultado:** não adotado nesta fase.
-
-### Builder MCP
-
-Integra branches, protótipos, Figma e documentação de design system no
-ecossistema Builder. Exige conta e pressupõe um workspace/design system externo
-que o projeto não possui; parte relevante da oferta é associada a planos e
-créditos.
-
-- <https://www.builder.io/c/docs/builder-mcp/>
-- <https://www.builder.io/pricing>
-
-**Resultado:** não adotado nesta fase.
-
-### shadcn MCP
-
-Permite pesquisar, visualizar e instalar itens de registries. O registry
-público padrão não exige conta, o código pode ser inspecionado antes da adoção,
-há suporte oficial a Codex e Claude Code e a licença do pacote é MIT.
-
-- <https://ui.shadcn.com/docs/mcp>
-
-**Resultado:** única solução principal escolhida, mas opcional.
-
-O projeto **não adotou shadcn/ui como design system**. Nenhum componente,
-registry ou pacote de aplicação foi instalado. O MCP serve apenas para pesquisa
-e inspeção; qualquer item futuro exige revisão normal de código, licença,
-acessibilidade, dependências e aderência visual.
-
-## 7. Configuração MCP
-
-Versão validada e fixada: `shadcn@4.16.0`.
-
-- Codex: `.codex/config.toml`;
-- Claude Code: `.mcp.json`.
-
-O Codex confirmou o servidor `shadcn` como habilitado por `codex mcp list`. O
-comando `npx -y shadcn@4.16.0 mcp --help` também foi executado com sucesso.
-
-O MCP não é `required`; sua indisponibilidade não bloqueia desenvolvimento,
-testes ou build. Nenhuma credencial é versionada.
-
-## 8. Estrutura `.ai/`
+Função central:
 
 ```text
-.ai/
-├── README.md
-├── design/
-│   ├── FOUNDATIONS.md
-│   └── TOOLING.md
-├── prompts/
-│   └── frontend-task.md
-├── reviews/
-│   └── frontend-review.md
-└── skills/
-    └── clutch-frontend/
-        └── SKILL.md
+requireAuthenticatedActor()
 ```
 
-- `README.md`: escopo, versionamento, exclusões e manutenção;
-- `FOUNDATIONS.md`: princípios e linguagem visual;
-- `TOOLING.md`: comparação, decisão, configuração e uso seguro;
-- `frontend-task.md`: roteiro de início de tarefa;
-- `frontend-review.md`: checklist de UX, visual, acessibilidade e qualidade;
-- `SKILL.md`: workflow canônico e permanente de frontend.
+Localização:
 
-## 9. Skill de frontend
+- `src/lib/auth/authenticated-actor.js`.
 
-A skill define:
+Fluxo:
 
-- filosofia de ferramenta profissional, direta e densa;
-- referências de critérios: Linear, Raycast, Vercel, GitHub e Discord;
-- processo obrigatório antes, durante e depois da implementação;
-- tipografia, espaçamento, cor, bordas, sombras e movimento;
-- loading, empty, erro, sucesso e ações destrutivas;
-- acessibilidade, teclado, foco, semântica e contraste;
-- responsividade e revisão em desktop/mobile;
-- regras para componentes e dependências externas;
-- proibições contra templates genéricos e efeitos decorativos.
+1. chama `auth()` no servidor;
+2. exige `session.user.id` não vazio;
+3. consulta a conta `provider="discord"` do mesmo usuário interno;
+4. valida `Account.providerAccountId` como snowflake Discord;
+5. retorna somente:
 
-A fonte canônica permanece em `.ai/skills/clutch-frontend/SKILL.md`.
-`.agents/skills/clutch-frontend/SKILL.md` é somente um adaptador curto para a
-descoberta automática pelo Codex.
+```js
+{
+  userId,
+  discordUserId,
+}
+```
 
-## 10. Revisão do `AI_RULES.md`
+A função não recebe `userId` do cliente. Dependências de sessão e conta podem
+ser injetadas exclusivamente para testes. Falha de sessão/identidade produz
+`UNAUTHENTICATED`; falha da fonte produz `AUTHORIZATION_UNAVAILABLE`.
 
-Inconsistências encontradas e corrigidas:
+## 6. Formato e regra da allowlist
 
-1. **Hierarquia incompleta:** agora inclui contexto e documentação de
-   referência, distinguindo direção desejada de implementação atual.
-2. **“Nunca assumir” versus autonomia:** agora permite suposições locais,
-   reversíveis e dentro do escopo, exigindo pergunta para decisões de produto,
-   segurança, arquitetura, dados, custos ou irreversibilidade.
-3. **Ausência de regra para ferramentas externas:** agora proíbe envio de
-   secrets/dados e trata código gerado como externo não revisado.
-4. **Frontend sem processo operacional:** agora referencia a skill e o checklist
-   permanentes.
-5. **Verificações não comprovadas:** agora proíbe afirmar lint/test/build/revisão
-   visual sem execução.
-6. **Graphify nominalmente privilegiado:** regra generalizada para qualquer
-   ferramenta de análise, MCP ou registry.
+Fonte única:
 
-## 11. Atualização do `AGENTS.md`
+```text
+ALLOWED_DISCORD_USER_IDS
+```
 
-- ordem de leitura alinhada à hierarquia;
-- `AI_RULES.md` e `AI_HANDOFF.md` incluídos no contexto obrigatório;
-- reforçada a consulta à documentação local da versão instalada do Next.js;
-- criada seção de frontend/design com skill, fundamentos e checklist;
-- documentado o uso opcional do MCP shadcn;
-- registrada a não adoção do Graphify;
-- definido quando atualizar o handoff.
+Módulo:
 
-Limitação: `node_modules/next/dist/docs/` permanece ausente na instalação local
-atual. Uma futura tarefa que altere APIs Next deve obter documentação compatível
-antes de escrever código e registrar a fonte usada.
+- `src/lib/auth/operator-allowlist.js`.
 
-## 12. Auditoria do Supabase
+Regras:
 
-### O que existe
+- IDs Discord em lista textual;
+- separadores aceitos: vírgula, ponto e vírgula e whitespace;
+- espaços e entradas vazias são removidos;
+- duplicatas são eliminadas;
+- cada item precisa ser um snowflake decimal de 17 a 20 dígitos, sem zero
+  inicial;
+- variável ausente, lista vazia ou qualquer item inválido torna toda a
+  configuração inválida;
+- configuração inválida nunca concede acesso;
+- a lista completa nunca é retornada ao cliente ou registrada.
 
-- provider Prisma `postgresql`;
-- conexão exclusivamente por `DATABASE_URL`;
-- endpoint atual classificado como PostgreSQL hospedado no Supabase, sem expor
-  hostname ou credenciais;
-- schema e migrations em SQL PostgreSQL comum;
-- arrays PostgreSQL em `VoiceHub`.
+`.env.example` passou a ser versionável e contém apenas o nome da variável, sem
+valor real. `.gitignore` continua ignorando todos os demais `.env*`.
 
-### O que não existe no código/versionamento
+## 7. Modelo de autorização de operador
 
-- `@supabase/*` ou outro SDK Supabase;
-- Supabase Auth;
-- Storage;
-- Realtime;
-- Edge Functions;
-- buckets;
-- chamadas às APIs Supabase;
-- RLS;
-- `CREATE POLICY`;
-- referência a `auth.users`;
-- extensões ou tipos proprietários do Supabase.
+Função central:
 
-Referências históricas ao Supabase existem apenas em `TALK_LOG.md` e em
-instruções operacionais antigas.
+```text
+requireOperator()
+```
 
-### Resposta objetiva
+Localização:
 
-**Do ponto de vista do código da aplicação, sim:** remover o Supabase como
-provedor exige essencialmente apontar `DATABASE_URL` para outro PostgreSQL
-compatível.
+- `src/lib/auth/operator-authorization.js`.
 
-**Do ponto de vista operacional, não é somente trocar a string:** é necessário
-migrar/validar os dados, aplicar migrations, conferir versão PostgreSQL, TLS,
-pooling, timeouts, limites de conexão, backup/restore, timezone e
-disponibilidade. Arrays PostgreSQL precisam continuar suportados.
+Ela executa `requireAuthenticatedActor()`, carrega a allowlist somente no
+servidor e exige a presença de `actor.discordUserId`. Em sucesso, devolve o ator
+mínimo acrescido de `isOperator: true`.
 
-Não houve migração, alteração de schema ou conexão ao banco nesta fase.
+Distinções:
+
+- sem sessão/identidade: `UNAUTHENTICATED`;
+- autenticado fora da lista: `ACCESS_DENIED`;
+- lista ausente/vazia/malformada: `INVALID_CONFIGURATION`;
+- falha da fonte de identidade: `AUTHORIZATION_UNAVAILABLE`.
+
+## 8. Modelo de autorização por guild
+
+### Processo web
+
+Função:
+
+```text
+requireGuildAuthorization(actor, guildId)
+```
+
+Localização:
+
+- `src/lib/discord/guild-authorization.js`.
+
+Ela valida o `guildId`, exige um ator já obtido no servidor e chama o bot pela
+API privada. A resposta precisa confirmar exatamente a mesma guild. O contexto
+retornado contém somente `actor` e `guildId`.
+
+### API privada e bot
+
+Novo endpoint:
+
+```text
+GET /guilds/:guildId/access
+```
+
+Headers internos:
+
+- `x-bot-secret`;
+- `x-actor-discord-id`.
+
+O ID do ator vem da sessão + banco no Next.js, não do navegador. O bot valida
+novamente os dois snowflakes, encontra a guild no próprio cache, busca o membro
+atual com `guild.members.fetch` e exige:
+
+- owner da guild; ou
+- permissão `Administrator`; ou
+- permissão `ManageGuild`.
+
+Guild ausente, membro ausente e membro sem permissão resultam em negação.
+Falha inesperada do Discord resulta em indisponibilidade, nunca em acesso.
+
+Módulo do bot:
+
+- `bot/guild-authorization.js`.
+
+## 9. Estratégia de erros
+
+Módulo:
+
+- `src/lib/auth/authorization-error.js`.
+
+Categorias estáveis:
+
+- `UNAUTHENTICATED`;
+- `ACCESS_DENIED`;
+- `INVALID_INPUT`;
+- `INVALID_CONFIGURATION`;
+- `GUILD_ACCESS_DENIED`;
+- `AUTHORIZATION_UNAVAILABLE`;
+- `UNEXPECTED`.
+
+`AuthorizationError` conserva a categoria internamente.
+`toAuthorizationFailure()` devolve somente `error`, `code` e mensagem pública.
+Cause, stack, consulta, variável, allowlist e mensagem interna nunca são
+serializados. Erros desconhecidos viram `UNEXPECTED`.
+
+Na API do bot:
+
+- entrada inválida → 400;
+- segredo inválido → 401;
+- guild negada → 403;
+- Discord/autorização indisponível → 503.
+
+## 10. Validações de runtime
+
+- snowflakes Discord de ator, guild e IDs da allowlist;
+- tipo string e conteúdo não vazio;
+- separadores, espaços e duplicatas da allowlist;
+- porta interna numérica entre 1 e 65535;
+- presença não vazia de `BOT_API_SECRET` no cliente central;
+- correspondência exata entre guild solicitada e guild confirmada pelo bot;
+- formato mínimo da resposta de autorização e lista de cargos.
+
+Nenhuma biblioteca foi adicionada; as validações são pequenas e explícitas.
+
+## 11. Fluxo piloto escolhido
+
+Fluxo:
+
+```text
+getGuildRoles(guildId)
+→ requireOperator()
+→ requireGuildAuthorization()
+→ GET /guilds/:guildId/access
+→ fetchGuildRolesWithBot()
+→ GET /guilds/:guildId/roles
+→ verificação repetida no bot
+→ lista de cargos ou falha segura
+```
+
+A Server Action está em:
+
+- `src/app/dashboard/voice-channels/[id]/actions.js`.
+
+O orquestrador testável está em:
+
+- `src/lib/discord/guild-roles.js`.
+
+## 12. Justificativa do fluxo piloto
+
+A leitura de cargos foi escolhida porque:
+
+- é administrativa e ligada a uma guild;
+- é somente leitura;
+- não cria, altera ou exclui recursos;
+- já atravessa Server Action, API privada e Discord;
+- exercita autenticação, allowlist, guild e repetição da autorização no bot;
+- possui baixo risco de regressão comparado a criar/excluir Hub ou remover o
+  bot;
+- não exige migrar as demais ações e, portanto, não antecipa a Fase 1B.
 
 ## 13. Arquivos criados
 
-- `.agents/skills/clutch-frontend/SKILL.md`
-- `.ai/README.md`
-- `.ai/design/FOUNDATIONS.md`
-- `.ai/design/TOOLING.md`
-- `.ai/prompts/frontend-task.md`
-- `.ai/reviews/frontend-review.md`
-- `.ai/skills/clutch-frontend/SKILL.md`
-- `.codex/config.toml`
-- `.mcp.json`
+- `.env.example` — tornou-se versionável, sem valores secretos;
+- `bot/api.test.mjs`;
+- `bot/guild-authorization.js`;
+- `bot/guild-authorization.test.mjs`;
+- `src/lib/auth/authenticated-actor.js`;
+- `src/lib/auth/authenticated-actor.test.js`;
+- `src/lib/auth/authorization-error.js`;
+- `src/lib/auth/authorization-error.test.js`;
+- `src/lib/auth/operator-allowlist.js`;
+- `src/lib/auth/operator-allowlist.test.js`;
+- `src/lib/auth/operator-authorization.js`;
+- `src/lib/auth/operator-authorization.test.js`;
+- `src/lib/discord/bot-api-client.js`;
+- `src/lib/discord/discord-identifiers.js`;
+- `src/lib/discord/guild-authorization.js`;
+- `src/lib/discord/guild-authorization.test.js`;
+- `src/lib/discord/guild-roles.js`;
+- `src/lib/discord/guild-roles.test.js`.
 
-## 14. Arquivos modificados nesta fase
+## 14. Arquivos modificados
 
-- `.gitignore`
-- `AGENTS.md`
-- `AI_CONTEXT.md`
-- `AI_RULES.md`
-- `DECISIONS.md`
-- `AI_HANDOFF.md` — sobrescrito por este handoff.
+- `.gitignore`: libera somente `.env.example` para versionamento;
+- `bot/api.js`: factory testável, endpoint de acesso e proteção do piloto;
+- `src/app/dashboard/voice-channels/[id]/actions.js`: integração do piloto;
+- `AI_CONTEXT.md`: modelo permanente e limitações atuais;
+- `DECISIONS.md`: ADR-014 e ADR-015 passaram de Proposta para Aceita;
+- `AI_HANDOFF.md`: sobrescrito por este relatório.
 
-`PROJECT_DIRECTION.md`, `PROJECT_REPORT.md`, `README.md`, código-fonte,
-`package.json`, `package-lock.json`, schema e migrations não foram alterados
-por esta fase.
+`AGENTS.md` e `AI_RULES.md` não foram alterados: já continham instruções
+permanentes suficientes e nenhuma contradição objetiva foi encontrada.
 
-## 15. Estado pré-existente da árvore
+## 15. Testes adicionados
 
-A árvore já estava suja ao iniciar a Fase IA-01, contendo a entrega da Fase 0 e
-outras alterações locais:
+Foram adicionados 43 testes, agrupados em:
 
-- mudanças em `AGENTS.md`, `README.md`, bot, ESLint, `package.json` e lockfile;
-- novos testes, Vitest, utilitário de voz e documentos;
-- `CLAUDE.md` marcado como removido.
+- parser/comparação da allowlist;
+- identidade autenticada;
+- autorização de operador;
+- mensagens públicas e redaction de erros;
+- autorização web por guild;
+- orquestração e contrato do fluxo piloto;
+- autorização Discord no bot;
+- integração HTTP local do endpoint de cargos com Express real.
 
-Essas alterações foram preservadas. A remoção de `CLAUDE.md` não foi revertida
-e nenhum arquivo funcional preexistente foi editado nesta fase.
+Casos cobertos:
 
-## 16. Dependências e serviços
+- permitido e negado;
+- sessão ausente/incompleta;
+- ID externo sem substituir a sessão;
+- configuração ausente, vazia, inválida, duplicada e com separadores;
+- guild inválida, negada, ausente e cruzada;
+- membro sem permissão;
+- owner, Administrator e ManageGuild;
+- falha de banco/Discord/fonte de autorização;
+- segredo interno incorreto;
+- ator ausente no endpoint;
+- resposta pública sem detalhes internos.
 
-- dependências npm adicionadas: nenhuma;
-- dependências npm removidas: nenhuma;
-- dependências de produção alteradas: nenhuma;
-- runtime Python/Graphify instalado: não;
-- conta, token ou serviço pago exigido: não;
-- migration executada: não;
-- Docker alterado: não.
+## 16. Resultado dos testes
 
-O shadcn MCP é baixado sob demanda por `npx` na versão fixada e não integra o
-grafo de dependências da aplicação.
+Última execução antes deste handoff:
 
-## 17. Verificações executadas
+```text
+npm test
+10 arquivos aprovados
+47 testes aprovados
+0 falhas
+```
 
-### Configuração
+Quatro testes já existiam; 43 foram adicionados nesta fase.
 
-- parse de `.mcp.json`: sucesso;
-- `codex mcp list`: servidor `shadcn` habilitado;
-- `npx -y shadcn@4.16.0 mcp --help`: sucesso;
-- `git diff --check` nos arquivos da fase: sucesso.
+O teste HTTP usa uma porta efêmera local, Express real e objetos Discord
+controlados. Não acessa Discord, banco ou rede externa.
 
-### Lint
+## 17. Resultado do lint
 
-`npm run lint`: **sucesso, 0 erros e 7 warnings**.
+Última execução antes deste handoff:
 
-Todos os warnings são `@next/next/no-img-element` preexistentes:
+```text
+npm run lint
+0 erros
+7 warnings
+```
 
-- `ServersClient.js`;
-- `VoiceHubEditor.js`;
-- `ServerSelector.js`;
-- página de Hubs;
-- página inicial;
-- `Sidebar.js`;
-- `UserDropdown.js`.
+Os sete warnings preexistentes são `@next/next/no-img-element` em componentes
+visuais. Não foram corrigidos por estarem fora do escopo.
 
-Não foram corrigidos porque isso alteraria código/UI fora do escopo.
+## 18. Resultado do build
 
-### Testes
+Última execução sobre o diff final:
 
-`npm test`: **sucesso**.
+```text
+npm run build
+Prisma Client 6.19.3 gerado
+Next.js 15.5.22 compilado
+10 rotas processadas
+build concluído com sucesso
+```
 
-- 2 arquivos;
-- 4 testes;
-- 4 aprovados.
+O build repetiu somente os sete warnings preexistentes de `<img>`.
 
-### Build
+## 19. Dependências
 
-`npm run build`: **sucesso**.
+Nenhuma dependência foi adicionada, removida ou atualizada.
 
-- Prisma Client 6.19.3 gerado;
-- Next.js 15.5.22 compilado;
-- 10 rotas processadas;
-- mesmos 7 warnings de `<img>`;
-- `.env.local` e `.env` carregados sem exibição de valores.
+- `package.json`: sem alteração;
+- `package-lock.json`: sem alteração.
 
-## 18. Limitações e riscos restantes
+Foram usados Vitest, Express e discord.js já instalados.
 
-- mudanças visuais futuras ainda dependem de revisão renderizada humana/agente;
-- o MCP executa pacote externo sob demanda e precisa continuar com versão
-  deliberadamente fixada;
-- registries podem retornar código inseguro, incompatível ou genérico;
-- Claude Code só carregará `.mcp.json` em ambiente que aceite configuração de
-  projeto;
-- a skill canônica não substitui testes E2E ou auditoria de acessibilidade;
-- documentação de Next versionada no pacote permanece indisponível localmente;
-- os riscos críticos da aplicação identificados na Fase 0 continuam abertos.
+## 20. Banco e migrations
 
-## 19. Próxima fase
+- `prisma/schema.prisma`: sem alteração;
+- `prisma/migrations/`: sem alteração;
+- migration criada: nenhuma;
+- migration executada: nenhuma;
+- `npx prisma validate`: sucesso.
 
-A próxima fase continua sendo a **Fase 1 — Segurança**, antes de Docker:
+A consulta de identidade usa o modelo `Account` já existente.
 
-1. allowlist de operadores conforme ADR-014;
-2. autorização por guild conforme ADR-015;
-3. correção de IDOR e validação consistente nas Server Actions;
-4. testes de caminhos permitido, negado e entrada inválida;
-5. somente depois avançar para persistência/reconciliação e empacotamento.
+## 21. Riscos restantes
 
-Não iniciar Docker Compose antes de fechar os riscos prioritários de segurança.
+- a allowlist ainda não bloqueia globalmente login/dashboard; somente o piloto
+  exige operador nesta fase;
+- disponibilidade da autorização depende da API privada e do Discord;
+- a instalação precisa configurar `ALLOWED_DISCORD_USER_IDS` antes de usar o
+  piloto;
+- o teste não usa sessão OAuth, banco ou guild Discord reais;
+- não há rate limiting, timeout explícito ou observabilidade estruturada;
+- outras rotas do bot ainda retornam detalhes de falha e não verificam ator;
+- não há middleware global; a política continuará aplicada por operações;
+- múltiplos `PrismaClient` ainda existem fora do singleton;
+- IDs válidos continuam insuficientes sem ownership/escopo nas operações não
+  migradas.
 
-## 20. Resumo para o próximo agente
+## 22. Operações ainda vulneráveis ou não migradas
 
-Leia a hierarquia em `AI_RULES.md`. Para frontend, a skill
-`clutch-frontend` deve aparecer automaticamente no Codex; sua fonte canônica
-está em `.ai/`. O MCP shadcn é opcional e não autoriza instalação automática.
-Graphify foi deliberadamente rejeitado nesta fase. Supabase não é uma
-dependência de plataforma do runtime além da conexão PostgreSQL. Preserve a
-árvore suja e comece a próxima implementação pelas ADR-014 e ADR-015.
+### Guild/Discord
 
+- `getGuilds`: lista todas as guilds do bot;
+- `removeGuild`: não exige operador nem autorização da guild;
+- `createVoiceHub`: confia no `guildId` do formulário;
+- `updateVoiceHub`: restringe por owner do registro, mas não reconfirma guild;
+- `deleteVoiceHub`: restringe por owner do registro, mas não reconfirma guild;
+- endpoints POST/PATCH/DELETE de voz e DELETE da guild no bot ainda não exigem
+  `x-actor-discord-id`;
+- páginas que usam `getGuilds` ainda podem exibir guilds não administráveis.
+
+### Recursos internos
+
+- `updateChannelOrder`: IDOR crítico entre templates;
+- template/channel actions: não usam `requireOperator` e possuem validação
+  parcial;
+- `toggleTool`: aceita `toolKey` e boolean sem validação suficiente;
+- comandos slash: vinculam a conta Discord, mas não aplicam a allowlist central;
+- leitura/edição de Hubs ainda possui a falha preexistente dos arrays de cargos
+  omitidos pela query da página.
+
+Esses itens não foram corrigidos para respeitar a divisão 1A/1B.
+
+## 23. Plano objetivo para a Fase 1B
+
+1. aplicar `requireOperator` às operações administrativas restantes;
+2. filtrar `getGuilds` pela interseção de guilds efetivamente autorizadas;
+3. aplicar `requireGuildAuthorization` antes de todo efeito Discord;
+4. exigir e verificar ator nos endpoints POST/PATCH/DELETE do bot;
+5. limitar consultas VoiceHub por user + guild autorizada + recurso;
+6. corrigir o IDOR de `updateChannelOrder` validando o conjunto completo;
+7. validar enums, comprimentos, números, arrays e tool keys;
+8. testar cada action com sessão ausente, operador negado, guild cruzada,
+   recurso alheio, entrada inválida e falha externa;
+9. revisar mensagens/logs restantes para remover detalhes internos;
+10. executar novamente lint, testes, build, Prisma validate e auditoria de
+    segredos.
+
+Não avançar para persistência de canais temporários ou Docker antes de concluir
+essa migração de segurança.
+
+## 24. Resumo para o próximo agente
+
+A fonte de identidade é sessão Auth.js + `Account.providerAccountId`. Nunca
+aceite `userId` ou Discord ID do cliente. A allowlist existe somente em
+`operator-allowlist.js`; não replique parsing. Use `requireOperator`, depois
+`requireGuildAuthorization`, e limite a consulta/efeito à guild confirmada. O
+bot deve repetir a verificação com o ator transmitido pela API privada. O fluxo
+de cargos é o exemplo piloto. Todas as outras operações listadas acima ainda
+precisam ser migradas na Fase 1B.

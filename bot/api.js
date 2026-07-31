@@ -1,10 +1,15 @@
 const express = require("express")
 const { ChannelType } = require("discord.js")
+const {
+  GUILD_AUTHORIZATION_CODES,
+  authorizeGuildActor,
+} = require("./guild-authorization")
 
-function startBotApi(client) {
+function createBotApi(client, options = {}) {
   const app = express()
-  const secret = process.env.BOT_API_SECRET
-  const port = process.env.BOT_API_PORT || 3001
+  const secret = Object.hasOwn(options, "secret")
+    ? options.secret
+    : process.env.BOT_API_SECRET
 
   app.use(express.json())
 
@@ -18,6 +23,30 @@ function startBotApi(client) {
 
     next()
   })
+
+  async function requireGuildActor(req, res) {
+    try {
+      return await authorizeGuildActor(
+        client,
+        req.params.guildId,
+        req.headers["x-actor-discord-id"]
+      )
+    } catch (error) {
+      if (error.code === GUILD_AUTHORIZATION_CODES.INVALID_INPUT) {
+        res.status(400).json({ error: "invalid authorization input" })
+        return null
+      }
+
+      if (error.code === GUILD_AUTHORIZATION_CODES.ACCESS_DENIED) {
+        res.status(403).json({ error: "guild access denied" })
+        return null
+      }
+
+      console.error("Falha ao verificar autorização da guild.")
+      res.status(503).json({ error: "guild authorization unavailable" })
+      return null
+    }
+  }
 
   app.get("/health", (req, res) => {
     res.json({
@@ -43,13 +72,27 @@ function startBotApi(client) {
     res.json(guilds)
   })
 
-  app.get("/guilds/:guildId/roles", async (req, res) => {
-    const guild = client.guilds.cache.get(req.params.guildId)
+  app.get("/guilds/:guildId/access", async (req, res) => {
+    const authorization = await requireGuildActor(req, res)
 
-    if (!guild) {
-      res.status(404).json({ error: "guild not found" })
+    if (!authorization) {
       return
     }
+
+    res.json({
+      authorized: true,
+      guildId: authorization.guildId,
+    })
+  })
+
+  app.get("/guilds/:guildId/roles", async (req, res) => {
+    const authorization = await requireGuildActor(req, res)
+
+    if (!authorization) {
+      return
+    }
+
+    const { guild } = authorization
 
     try {
       const roles = await guild.roles.fetch()
@@ -66,11 +109,8 @@ function startBotApi(client) {
 
       res.json(formattedRoles)
     } catch (error) {
-      console.log("Erro ao buscar cargos do servidor:", error.message)
-      res.status(500).json({
-        error: "failed to fetch roles",
-        details: error.message,
-      })
+      console.error("Erro ao buscar cargos do servidor autorizado.")
+      res.status(503).json({ error: "failed to fetch roles" })
     }
   })
 
@@ -203,9 +243,16 @@ function startBotApi(client) {
     }
   })
 
-  app.listen(port, "127.0.0.1", () => {
+  return app
+}
+
+function startBotApi(client) {
+  const app = createBotApi(client)
+  const port = process.env.BOT_API_PORT || 3001
+
+  return app.listen(port, "127.0.0.1", () => {
     console.log(`API interna do bot rodando em http://127.0.0.1:${port}`)
   })
 }
 
-module.exports = { startBotApi }
+module.exports = { createBotApi, startBotApi }

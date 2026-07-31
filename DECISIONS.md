@@ -372,7 +372,7 @@ mais simples pelo runner nativo.
 
 # ADR-014 — Restringir operadores por allowlist
 
-**Status:** Proposta
+**Status:** Aceita
 
 **Data:** 31/07/2026
 
@@ -381,7 +381,7 @@ mais simples pelo runner nativo.
 O Clutch Hub é uma ferramenta pessoal, mas o login OAuth atual aceita qualquer
 conta Discord.
 
-## Decisão proposta
+## Decisão
 
 - utilizar `ALLOWED_DISCORD_USER_IDS`;
 - interpretar a variável como uma lista de IDs Discord;
@@ -401,7 +401,7 @@ Reavaliar apenas se o projeto deixar de ser uma ferramenta pessoal.
 
 # ADR-015 — Autorizar operações por guild no bot
 
-**Status:** Proposta
+**Status:** Aceita
 
 **Data:** 31/07/2026
 
@@ -410,7 +410,7 @@ Reavaliar apenas se o projeto deixar de ser uma ferramenta pessoal.
 As Server Actions atuais conhecem a sessão, mas a API privada do bot não
 verifica se o ator administra a guild recebida.
 
-## Decisão proposta
+## Decisão
 
 - o Next.js identifica o Discord ID do ator pela sessão e conta persistida;
 - o Next.js envia esse ID somente pela comunicação privada autenticada;

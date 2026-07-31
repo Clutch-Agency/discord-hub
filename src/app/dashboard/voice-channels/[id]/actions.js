@@ -4,6 +4,10 @@ import { auth } from "@/auth"
 import { redirect } from "next/navigation"
 import { PrismaClient } from "@prisma/client"
 import { revalidatePath } from "next/cache"
+import { requireOperator } from "@/lib/auth/operator-authorization"
+import { requireGuildAuthorization } from "@/lib/discord/guild-authorization"
+import { fetchGuildRolesWithBot } from "@/lib/discord/bot-api-client"
+import { getGuildRolesResult } from "@/lib/discord/guild-roles"
 
 const prisma = new PrismaClient()
 const BOT_API_URL = `http://localhost:${process.env.BOT_API_PORT || 3001}`
@@ -19,52 +23,14 @@ function uniqueValues(values) {
 }
 
 export async function getGuildRoles(guildId) {
-  const session = await auth()
-
-  if (!session) {
-    redirect("/")
-  }
-
-  if (!guildId) {
-    return {
-      error: true,
-      roles: [],
-    }
-  }
-
-  try {
-    const response = await fetch(`${BOT_API_URL}/guilds/${guildId}/roles`, {
-      headers: {
-        "x-bot-secret": process.env.BOT_API_SECRET,
-      },
-      cache: "no-store",
-    })
-
-    if (!response.ok) {
-      console.log(
-        `Não foi possível buscar cargos do servidor ${guildId}: ${response.status}`
-      )
-
-      return {
-        error: true,
-        roles: [],
-      }
-    }
-
-    const roles = await response.json()
-
-    return {
-      error: false,
-      roles,
-    }
-  } catch (error) {
-    console.log("Erro ao buscar cargos do Discord:", error.message)
-
-    return {
-      error: true,
-      roles: [],
-    }
-  }
+  return getGuildRolesResult(guildId, {
+    requireOperator,
+    requireGuildAuthorization,
+    fetchGuildRoles: fetchGuildRolesWithBot,
+    onUnexpectedError: () => {
+      console.error("Falha inesperada ao buscar cargos de uma guild autorizada.")
+    },
+  })
 }
 
 export async function updateVoiceHub(formData) {
